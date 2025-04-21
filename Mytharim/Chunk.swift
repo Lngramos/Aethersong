@@ -1,6 +1,5 @@
 // ----------------------------------------
 // File: Chunk.swift
-// Represents a 16×16 block of tiles with demo heightmap generation
 import Foundation
 
 public class Chunk {
@@ -8,13 +7,12 @@ public class Chunk {
     public private(set) var tiles: [[Tile]]
 
     public init() {
-        self.tiles = Array(
+        tiles = Array(
             repeating: Array(repeating: Tile(), count: Chunk.size),
             count: Chunk.size
         )
     }
 
-    /// Generates a radial hill demo heightmap
     public func generateDemoData() {
         let centre = Chunk.size / 2
         for x in 0..<Chunk.size {
@@ -22,8 +20,7 @@ public class Chunk {
                 let dx = Float(x - centre)
                 let dy = Float(y - centre)
                 let dist = sqrt(dx*dx + dy*dy)
-                let h = max(0, Float(4) - dist)
-                tiles[x][y] = Tile(height: h, type: 0)
+                tiles[x][y] = Tile(height: max(0, 4 - dist), type: 0)
             }
         }
     }

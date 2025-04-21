@@ -1,114 +1,115 @@
-
-// ----------------------------------------
 // File: Renderer.swift
-// Metal renderer focused solely on terrain
-import Metal
 import MetalKit
-import simd
 
 @MainActor
-class Renderer: NSObject, MTKViewDelegate {
-    // MARK: - Properties
-    let device: MTLDevice
-    let commandQueue: MTLCommandQueue
-    let pipelineState: MTLRenderPipelineState
-    let depthState: MTLDepthStencilState
+public class Renderer: NSObject, MTKViewDelegate {
+    private let terrainRenderer: TerrainRenderer
+    private let camera = Camera()
+    private let uniformBuffer: MTLBuffer
+    private let maxBuffersInFlight = 3
+    private var bufferIndex = 0
 
-    let maxBuffersInFlight = 3
-    var dynamicUniformBuffer: MTLBuffer
-    var uniformBufferIndex = 0
-    var uniformBufferOffset = 0
-    var uniforms: UnsafeMutablePointer<Uniforms>
-
-    var projectionMatrix = matrix_identity_float4x4
-    var terrainChunk: Chunk!
-    var terrainMesh: MTKMesh!
-    let inFlightSemaphore = DispatchSemaphore(value: 3)
-
-    // MARK: - Initialization
-    @MainActor
-    init?(metalKitView: MTKView) {
-        guard let dev = metalKitView.device else { return nil }
-        device = dev
-        commandQueue = device.makeCommandQueue()!
-
-        // Uniform buffer
-        let alignedSize = (MemoryLayout<Uniforms>.size + 0xFF) & -0x100
-        dynamicUniformBuffer = device.makeBuffer(length: alignedSize * maxBuffersInFlight,
-                                                 options: .storageModeShared)!
-        dynamicUniformBuffer.label = "UniformBuffer"
-        uniforms = UnsafeMutableRawPointer(dynamicUniformBuffer.contents())
-            .bindMemory(to: Uniforms.self, capacity: 1)
-
-        // Configure MTKView
-        metalKitView.depthStencilPixelFormat = .depth32Float_stencil8
-        metalKitView.colorPixelFormat = .bgra8Unorm_srgb
-        metalKitView.sampleCount = 1
-        metalKitView.clearColor = MTLClearColor(red: 0.53, green: 0.81, blue: 0.98, alpha: 1) // sky-blue background
-
-        // Pipeline setup
-        let vDesc = Renderer.buildMetalVertexDescriptor()
-        do {
-            pipelineState = try Renderer.buildRenderPipelineWithDevice(
-                device: device,
-                metalKitView: metalKitView,
-                mtlVertexDescriptor: vDesc
-            )
-        } catch {
-            print("Pipeline creation error: \(error)")
-            return nil
+    public init(view: MTKView) {
+        // Setup Metal device
+        let device: MTLDevice
+        if let dev = view.device {
+            device = dev
+        } else if let sysDev = MTLCreateSystemDefaultDevice() {
+            device = sysDev
+            view.device = device
+        } else {
+            fatalError("Metal device not available")
         }
 
-        // Depth-stencil state
-        let depthDesc = MTLDepthStencilDescriptor()
-        depthDesc.depthCompareFunction = .less
-        depthDesc.isDepthWriteEnabled = true
-        depthState = device.makeDepthStencilState(descriptor: depthDesc)!
+        // Load default library
+        guard let library = device.makeDefaultLibrary() else {
+            fatalError("Default Metal library not found")
+        }
 
-        // Load terrain chunk
-        terrainChunk = Chunk()
-        terrainChunk.generateDemoData()
+        // Configure MTKView formats
+        view.device = device
+        view.colorPixelFormat = .bgra8Unorm_srgb
+        view.depthStencilPixelFormat = .depth32Float_stencil8
+        view.clearColor = MTLClearColor(red: 0.53, green: 0.81, blue: 0.98, alpha: 1)
+
+        // Create uniform buffer
+        let alignedSize = (MemoryLayout<Uniforms>.size + 0xFF) & -0x100
+        guard let uBuf = device.makeBuffer(length: alignedSize * maxBuffersInFlight,
+                                           options: .storageModeShared) else {
+            fatalError("Unable to allocate uniform buffer")
+        }
+        uniformBuffer = uBuf
+
+        // Build a matching vertex descriptor
+        let vDesc = MTLVertexDescriptor()
+        vDesc.attributes[0].format = .float3
+        vDesc.attributes[0].offset = 0
+        vDesc.attributes[0].bufferIndex = 0
+        vDesc.attributes[1].format = .float2
+        vDesc.attributes[1].offset = MemoryLayout<SIMD3<Float>>.stride
+        vDesc.attributes[1].bufferIndex = 0
+        vDesc.layouts[0].stride = MemoryLayout<Float>.stride * 5
+
+        // Initialize terrain renderer
         do {
-            terrainMesh = try ChunkMeshBuilder.buildMesh(from: terrainChunk, device: device)
+            terrainRenderer = try TerrainRenderer(
+                device: device,
+                library: library,
+                descriptor: vDesc,
+                pixelFormat: view.colorPixelFormat
+            )
         } catch {
-            print("Terrain mesh build error: \(error)")
-            return nil
+            fatalError("TerrainRenderer init failed: \(error)")
         }
 
         super.init()
+        view.delegate = self
+        // Prime camera with current drawable size
+        self.mtkView(view, drawableSizeWillChange: view.drawableSize)
     }
 
     // MARK: - MTKViewDelegate
-    func draw(in view: MTKView) {
-        _ = inFlightSemaphore.wait(timeout: .distantFuture)
-        guard let cmdBuf = commandQueue.makeCommandBuffer() else { return }
-        cmdBuf.addCompletedHandler { _ in self.inFlightSemaphore.signal() }
+    public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        let aspect = Float(size.width) / Float(size.height)
+        camera.updatePerspective(
+            fovy: radians_from_degrees(65),
+            aspect: aspect,
+            nearZ: 0.1,
+            farZ: 100
+        )
+        let center = Float(Chunk.size)/2
+        camera.lookAt(eye: SIMD3(center, 8, center * 1.5),
+                      target: SIMD3(center, 0, center),
+                      up: SIMD3(0,1,0))
+    }
 
-        updateUniforms(view: view)
+    public func draw(in view: MTKView) {
+        // Cycle uniform buffer
+        let idx = bufferIndex % maxBuffersInFlight
+        let alignedSize = (MemoryLayout<Uniforms>.size + 0xFF) & -0x100
+        let offset = alignedSize * idx
+        bufferIndex += 1
 
-        guard let rpd = view.currentRenderPassDescriptor,
+        // Update uniform data
+        let ptr = uniformBuffer.contents().advanced(by: offset)
+            .bindMemory(to: Uniforms.self, capacity: 1)
+        ptr.pointee.projectionMatrix = camera.projectionMatrix
+        ptr.pointee.modelViewMatrix = camera.viewMatrix
+
+        // Acquire encoder
+        guard let cmdQ = view.device?.makeCommandQueue(),
+              let cmdBuf = cmdQ.makeCommandBuffer(),
+              let rpd = view.currentRenderPassDescriptor,
               let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: rpd) else {
-            cmdBuf.commit()
             return
         }
 
-        encoder.setRenderPipelineState(pipelineState)
-        encoder.setDepthStencilState(depthState)
-        encoder.setVertexBuffer(dynamicUniformBuffer, offset: uniformBufferOffset, index: 2) // bind uniforms to index 2 per shader
-        encoder.setVertexBuffer(dynamicUniformBuffer, offset: uniformBufferOffset, index: 2) // duplicate for safety if needed
-        encoder.setFragmentBuffer(dynamicUniformBuffer, offset: uniformBufferOffset, index: 2) // bind uniforms to fragment at index 2
-
-        // Bind interleaved vertex buffer at index 0
-        let vb = terrainMesh.vertexBuffers[0]
-        encoder.setVertexBuffer(vb.buffer, offset: vb.offset, index: 0)
-
-        for submesh in terrainMesh.submeshes {
-            encoder.drawIndexedPrimitives(type: submesh.primitiveType,
-                                          indexCount: submesh.indexCount,
-                                          indexType: submesh.indexType,
-                                          indexBuffer: submesh.indexBuffer.buffer,
-                                          indexBufferOffset: submesh.indexBuffer.offset)
-        }
+        // Draw terrain
+        terrainRenderer.draw(
+            encoder: encoder,
+            uniformsBuffer: uniformBuffer,
+            uniformOffset: offset
+        )
 
         encoder.endEncoding()
         if let drawable = view.currentDrawable {
@@ -117,100 +118,8 @@ class Renderer: NSObject, MTKViewDelegate {
         cmdBuf.commit()
     }
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        let aspect = Float(size.width) / Float(size.height)
-        projectionMatrix = matrix_perspective_right_hand(fovyRadians: radians_from_degrees(65),
-                                                         aspectRatio: aspect,
-                                                         nearZ: 0.1,
-                                                         farZ: 100)
-    }
-
-    // MARK: - Uniform Updates
-    private func updateUniforms(view: MTKView) {
-        // Cycle uniform buffer
-        uniformBufferIndex = (uniformBufferIndex + 1) % maxBuffersInFlight
-        let alignedSize = (MemoryLayout<Uniforms>.size + 0xFF) & -0x100
-        uniformBufferOffset = alignedSize * uniformBufferIndex
-        uniforms = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformBufferOffset)
-            .bindMemory(to: Uniforms.self, capacity: 1)
-
-        // Camera setup (look-at centered on chunk)
-        let eye    = SIMD3<Float>(Float(Chunk.size) / 2, 8, Float(Chunk.size) * 1.5) // above center, back
-        let target = SIMD3<Float>(Float(Chunk.size) / 2, 0, Float(Chunk.size) / 2) // center of chunk
-        let up     = SIMD3<Float>(0, 1, 0)
-        let viewMatrix = matrix_lookAtRH(eye: eye, target: target, up: up)
-
-        uniforms.pointee.modelViewMatrix = viewMatrix
-        uniforms.pointee.projectionMatrix = projectionMatrix
-    }
-
-    // MARK: - Camera Math
-    private func matrix_lookAtRH(eye: SIMD3<Float>, target: SIMD3<Float>, up: SIMD3<Float>) -> matrix_float4x4 {
-        let z = normalize(eye - target)
-        let x = normalize(cross(up, z))
-        let y = cross(z, x)
-        return matrix_float4x4(columns: (
-            SIMD4<Float>( x.x,  y.x,  z.x,  0),
-            SIMD4<Float>( x.y,  y.y,  z.y,  0),
-            SIMD4<Float>( x.z,  y.z,  z.z,  0),
-            SIMD4<Float>(-dot(x, eye), -dot(y, eye), -dot(z, eye), 1)
-        ))
-    }
-
-    // MARK: - Static Pipeline Builders
-    class func buildMetalVertexDescriptor() -> MTLVertexDescriptor {
-        let desc = MTLVertexDescriptor()
-        // Position
-        desc.attributes[0].format = .float3
-        desc.attributes[0].offset = 0
-        desc.attributes[0].bufferIndex = 0
-        // Texcoord
-        desc.attributes[1].format = .float2
-        desc.attributes[1].offset = MemoryLayout<SIMD3<Float>>.stride
-        desc.attributes[1].bufferIndex = 0
-        // Interleaved stride
-        desc.layouts[0].stride = MemoryLayout<Float>.stride * 5
-        desc.layouts[0].stepFunction = .perVertex
-        desc.layouts[0].stepRate = 1
-        return desc
-    }
-
-    @MainActor
-    class func buildRenderPipelineWithDevice(device: MTLDevice,
-                                             metalKitView: MTKView,
-                                             mtlVertexDescriptor: MTLVertexDescriptor) throws -> MTLRenderPipelineState {
-        let library = device.makeDefaultLibrary()!
-        let vertFn = library.makeFunction(name: "vertexShader")
-        let fragFn = library.makeFunction(name: "fragmentShader")
-        let pd = MTLRenderPipelineDescriptor()
-        pd.label = "TerrainPipeline"
-        pd.sampleCount = metalKitView.sampleCount
-        pd.vertexFunction = vertFn
-        pd.fragmentFunction = fragFn
-        pd.vertexDescriptor = mtlVertexDescriptor
-        pd.colorAttachments[0].pixelFormat = metalKitView.colorPixelFormat
-        pd.depthAttachmentPixelFormat = metalKitView.depthStencilPixelFormat
-        pd.stencilAttachmentPixelFormat = metalKitView.depthStencilPixelFormat
-        return try device.makeRenderPipelineState(descriptor: pd)
-    }
-
-    // MARK: - Math Utilities
+    // MARK: - Utilities
     private func radians_from_degrees(_ degrees: Float) -> Float {
         return (degrees / 180) * .pi
-    }
-
-    private func matrix_perspective_right_hand(fovyRadians fovy: Float,
-                                              aspectRatio aspect: Float,
-                                              nearZ: Float,
-                                              farZ: Float) -> matrix_float4x4 {
-        let ys = 1 / tanf(fovy * 0.5)
-        let xs = ys / aspect
-        let zs = farZ / (nearZ - farZ)
-        return matrix_float4x4(columns: (
-            SIMD4<Float>(xs, 0, 0, 0),
-            SIMD4<Float>(0, ys, 0, 0),
-            SIMD4<Float>(0, 0, zs, -1),
-            SIMD4<Float>(0, 0, zs * nearZ, 0)
-        ))
     }
 }

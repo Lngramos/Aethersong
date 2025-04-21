@@ -1,5 +1,5 @@
+// ----------------------------------------
 // File: Tile.swift
-// Defines the basic Tile unit for terrain height and type
 import Foundation
 
 public struct Tile {
