@@ -1,3 +1,4 @@
+// ----------------------------------------
 // File: Renderer.swift
 import MetalKit
 
@@ -8,6 +9,13 @@ public class Renderer: NSObject, MTKViewDelegate {
     private let uniformBuffer: MTLBuffer
     private let maxBuffersInFlight = 3
     private var bufferIndex = 0
+
+    // Camera orbit controls
+    private var yaw: Float = .pi / 4
+    private var pitch: Float = .pi / 4
+    private var radius: Float = 12
+    private let target = SIMD3<Float>(Float(Chunk.size)/2, 1, Float(Chunk.size)/2)
+    private var heldKeys: Set<String> = []
 
     public init(view: MTKView) {
         // Setup Metal device
@@ -64,23 +72,30 @@ public class Renderer: NSObject, MTKViewDelegate {
 
         super.init()
         view.delegate = self
-        // Prime camera with current drawable size
-        self.mtkView(view, drawableSizeWillChange: view.drawableSize)
+        setupKeyboardMonitoring()
+
+        // Ensure MTKView animates
+        view.isPaused = false
+        view.enableSetNeedsDisplay = false
+        view.preferredFramesPerSecond = 60
+
+        // Force projection + view setup before first frame
+        let aspect = Float(view.bounds.width) / Float(view.bounds.height)
+        camera.updatePerspective(fovy: radians_from_degrees(65),
+                                 aspect: aspect,
+                                 nearZ: 1.0,
+                                 farZ: 100.0)
+        updateCameraView()
     }
 
     // MARK: - MTKViewDelegate
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         let aspect = Float(size.width) / Float(size.height)
-        camera.updatePerspective(
-            fovy: radians_from_degrees(65),
-            aspect: aspect,
-            nearZ: 0.1,
-            farZ: 100
-        )
-        let center = Float(Chunk.size)/2
-        camera.lookAt(eye: SIMD3(center, 8, center * 1.5),
-                      target: SIMD3(center, 0, center),
-                      up: SIMD3(0,1,0))
+        camera.updatePerspective(fovy: radians_from_degrees(65),
+                                 aspect: aspect,
+                                 nearZ: 1.0,
+                                 farZ: 100.0)
+        updateCameraView()
     }
 
     public func draw(in view: MTKView) {
@@ -121,5 +136,54 @@ public class Renderer: NSObject, MTKViewDelegate {
     // MARK: - Utilities
     private func radians_from_degrees(_ degrees: Float) -> Float {
         return (degrees / 180) * .pi
+    }
+
+    private func updateCameraView() {
+        let x = target.x + radius * cosf(pitch) * sinf(yaw)
+        let y = target.y + radius * sinf(pitch)
+        let z = target.z + radius * cosf(pitch) * cosf(yaw)
+        let eye = SIMD3<Float>(x, y, z)
+        camera.lookAt(eye: eye, target: target, up: SIMD3<Float>(0, 1, 0))
+    }
+
+    private func setupKeyboardMonitoring() {
+        NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            guard let key = event.charactersIgnoringModifiers else { return event }
+            self?.heldKeys.insert(key)
+            return event
+        }
+
+        NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            guard let key = event.charactersIgnoringModifiers else { return nil }
+            self?.heldKeys.remove(key)
+            return nil
+        } // Prevent event swallowing
+
+        // Set up key repeat manually
+        Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleHeldKeys()
+            }
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) {
+        guard let key = event.charactersIgnoringModifiers else { return }
+        heldKeys.insert(key)
+    }
+
+    private func handleHeldKeys() {
+        for key in heldKeys {
+            switch key {
+            case "a": yaw -= 0.02
+            case "d": yaw += 0.02
+            case "w": pitch = min(.pi/2 - 0.1, pitch + 0.02)
+            case "s": pitch = max(-.pi/2 + 0.1, pitch - 0.02)
+            case "+", "=": radius = max(4, radius - 0.2)
+            case "-": radius = min(80, radius + 0.2)
+            default: continue
+            }
+        }
+        updateCameraView()
     }
 }
