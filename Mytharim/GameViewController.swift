@@ -19,7 +19,6 @@ class GameViewController: NSViewController {
         mtkView.isPaused = false
         mtkView.enableSetNeedsDisplay = false
         mtkView.preferredFramesPerSecond = 60
-
     }
     
     override func viewDidAppear() {

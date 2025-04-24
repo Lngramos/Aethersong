@@ -1,5 +1,3 @@
-// ----------------------------------------
-// File: Renderer.swift
 import MetalKit
 
 @MainActor
@@ -14,7 +12,7 @@ public class Renderer: NSObject, MTKViewDelegate {
     private var yaw: Float = .pi / 4
     private var pitch: Float = .pi / 4
     private var radius: Float = 12
-    private let target = SIMD3<Float>(Float(Chunk.size)/2, 1, Float(Chunk.size)/2)
+    private var target = SIMD3<Float>(Float(Chunk.size)/2, 1, Float(Chunk.size)/2)
     private var heldKeys: Set<String> = []
 
     public init(view: MTKView) {
@@ -58,13 +56,17 @@ public class Renderer: NSObject, MTKViewDelegate {
         vDesc.attributes[1].bufferIndex = 0
         vDesc.layouts[0].stride = MemoryLayout<Float>.stride * 5
 
-        // Initialize terrain renderer
+        // Setup chunk provider
+        let chunkProvider = FileChunkProvider(basePath: FileManager.default.temporaryDirectory)
+
+        // Initialize terrain renderer with chunk provider
         do {
             terrainRenderer = try TerrainRenderer(
                 device: device,
                 library: library,
                 descriptor: vDesc,
-                pixelFormat: view.colorPixelFormat
+                pixelFormat: view.colorPixelFormat,
+                chunkProvider: chunkProvider
             )
         } catch {
             fatalError("TerrainRenderer init failed: \(error)")
@@ -105,11 +107,11 @@ public class Renderer: NSObject, MTKViewDelegate {
         let offset = alignedSize * idx
         bufferIndex += 1
 
-        // Update uniform data
-        let ptr = uniformBuffer.contents().advanced(by: offset)
-            .bindMemory(to: Uniforms.self, capacity: 1)
-        ptr.pointee.projectionMatrix = camera.projectionMatrix
-        ptr.pointee.modelViewMatrix = camera.viewMatrix
+        // Pass matrices to TerrainRenderer
+        terrainRenderer.updateCamera(
+            viewMatrix: camera.viewMatrix,
+            projectionMatrix: camera.projectionMatrix
+        )
 
         // Acquire encoder
         guard let cmdQ = view.device?.makeCommandQueue(),
@@ -119,11 +121,21 @@ public class Renderer: NSObject, MTKViewDelegate {
             return
         }
 
-        // Draw terrain
+        // Calculate which chunk the target position is in
+        let chunkX = Int(target.x) / Chunk.size
+        let chunkY = Int(target.z) / Chunk.size
+        let centerChunk = ChunkCoord(x: chunkX, y: chunkY)
+
+        // Compute the player's current chunk
+        let playerChunk = ChunkCoord(
+            x: Int(target.x) / Chunk.size,
+            y: Int(target.z) / Chunk.size
+        )
+        
+        // Draw terrain centered around player
         terrainRenderer.draw(
             encoder: encoder,
-            uniformsBuffer: uniformBuffer,
-            uniformOffset: offset
+            centerChunk: playerChunk
         )
 
         encoder.endEncoding()
