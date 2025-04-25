@@ -46,6 +46,29 @@ public final class TerrainRenderer {
         self.projectionMatrix = projectionMatrix
     }
 
+    /// Converts a screen-space point into a ray in world space
+    public func rayFromScreen(screenPoint: SIMD2<Float>, viewSize: SIMD2<Float>) -> (origin: SIMD3<Float>, direction: SIMD3<Float>) {
+        let ndc = SIMD2<Float>(
+            x: (2.0 * screenPoint.x / viewSize.x) - 1.0,
+            y: 1.0 - (2.0 * screenPoint.y / viewSize.y)
+        )
+
+        let invProj = projectionMatrix.inverse
+        let invView = cameraViewMatrix.inverse
+
+        let nearPoint = SIMD4<Float>(ndc.x, ndc.y, 0, 1)
+        let farPoint  = SIMD4<Float>(ndc.x, ndc.y, 1, 1)
+
+        let nearWorld = invView * invProj * nearPoint
+        let farWorld  = invView * invProj * farPoint
+
+        let rayOrigin = (nearWorld / nearWorld.w).xyz
+        let rayTarget = (farWorld / farWorld.w).xyz
+        let rayDirection = simd_normalize(rayTarget - rayOrigin)
+
+        return (origin: rayOrigin, direction: rayDirection)
+    }
+
     /// Draws a grid of terrain chunks centered around the given chunk coordinate
     public func draw(encoder: MTLRenderCommandEncoder,
                      centerChunk: ChunkCoord) {

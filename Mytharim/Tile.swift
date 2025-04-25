@@ -1,13 +1,12 @@
-// ----------------------------------------
-// File: Tile.swift
 import Foundation
 
-public struct Tile {
-    public var height: Float
-    public var type: UInt8
+/// Represents a specific tile within a chunk
+struct TileCoord: CustomStringConvertible {
+    let chunk: ChunkCoord
+    let localX: Int
+    let localY: Int
 
-    public init(height: Float = 0, type: UInt8 = 0) {
-        self.height = height
-        self.type = type
+    var description: String {
+        return "Chunk(\(chunk.x), \(chunk.y)) Tile(\(localX), \(localY))"
     }
 }
