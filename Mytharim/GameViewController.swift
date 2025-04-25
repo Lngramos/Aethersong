@@ -6,6 +6,9 @@ final class GameViewController: NSViewController, GameViewInputDelegate {
     private var debugOverlay: DebugOverlayView!
     private var lastHoveredScreenPoint: SIMD2<Float>?
     private var lastHoveredViewSize: SIMD2<Float>?
+    private var frameCounter: Int = 0
+    private var lastFPSTime: TimeInterval = CACurrentMediaTime()
+    private var fps: Int = 0
 
     override func loadView() {
         self.view = GameView(
@@ -28,20 +31,21 @@ final class GameViewController: NSViewController, GameViewInputDelegate {
         mtkView.enableSetNeedsDisplay = false
         mtkView.preferredFramesPerSecond = 60
 
-        debugOverlay = DebugOverlayView(
-            frame: CGRect(x: 0, y: 0, width: 300, height: 60)
-        )
+        debugOverlay = DebugOverlayView(frame: CGRect(x: 0, y: 0, width: 300, height: 80))
         debugOverlay.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(debugOverlay)
 
         NSLayoutConstraint.activate([
             debugOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            debugOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+            debugOverlay.topAnchor.constraint(equalTo: view.topAnchor)
         ])
 
-        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) {
-            [weak self] _ in
-            self?.updateDebugOverlayIfNeeded()
+        let frameInterval = 1.0 / Double(mtkView.preferredFramesPerSecond)
+
+        Timer.scheduledTimer(withTimeInterval: frameInterval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            self.frameCounter += 1
+            self.updateDebugOverlayIfNeeded()
         }
     }
 
@@ -61,20 +65,23 @@ final class GameViewController: NSViewController, GameViewInputDelegate {
 
     // Update debug overlay with latest mouse position and camera info
     private func updateDebugOverlayIfNeeded() {
-        guard let screenPoint = lastHoveredScreenPoint,
-            let viewSize = lastHoveredViewSize
-        else { return }
+        guard let screenPoint = lastHoveredScreenPoint, let viewSize = lastHoveredViewSize else { return }
 
-        let (origin, direction) = renderer.terrainRenderer.rayFromScreen(
-            screenPoint: screenPoint,
-            viewSize: viewSize
-        )
+        let (origin, direction) = renderer.terrainRenderer.rayFromScreen(screenPoint: screenPoint, viewSize: viewSize)
         let cameraPosition = renderer.camera.position
+
+        let now = CACurrentMediaTime()
+        if now - lastFPSTime >= 1.0 {
+            fps = frameCounter
+            frameCounter = 0
+            lastFPSTime = now
+        }
 
         let t = -origin.y / direction.y
         if !t.isFinite || t < 0 {
             debugOverlay.updateText(
                 """
+                FPS: \(fps)
                 Camera Pos: (\(String(format: "%.1f", cameraPosition.x)), \(String(format: "%.1f", cameraPosition.y)), \(String(format: "%.1f", cameraPosition.z)))
                 World Hover: --
                 Tile Hover: --
@@ -100,6 +107,7 @@ final class GameViewController: NSViewController, GameViewInputDelegate {
 
         debugOverlay.updateText(
             """
+            FPS: \(fps)
             Camera Pos: (\(String(format: "%.1f", cameraPosition.x)), \(String(format: "%.1f", cameraPosition.y)), \(String(format: "%.1f", cameraPosition.z)))
             World Hover: (\(Int(worldX)), \(Int(worldZ)))
             Tile Hover: (\(chunkCoord.x), \(chunkCoord.y)) (\(correctedLocalX), \(correctedLocalY))

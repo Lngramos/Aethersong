@@ -15,15 +15,19 @@ final class GameView: MTKView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.acceptsMouseMovedEvents = true
+        
+        if let scale = window?.screen?.backingScaleFactor, scale > 1.0 {
+            print("Scaling view to \(scale)")
+            self.layer?.contentsScale = scale
+        }
     }
 
     override func keyDown(with event: NSEvent) {
-        // Handled via NSEvent monitors; suppress system beep
     }
 
     override func keyUp(with event: NSEvent) {
-        // Handled via NSEvent monitors; suppress system beep
     }
+
 
     private func screenAndViewSize(for event: NSEvent) -> (SIMD2<Float>, SIMD2<Float>) {
         let locationInWindow = event.locationInWindow
