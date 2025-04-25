@@ -1,10 +1,11 @@
-// ----------------------------------------
-// File: Camera.swift
 import simd
 
 public class Camera {
     public var projectionMatrix = matrix_identity_float4x4
     public var viewMatrix = matrix_identity_float4x4
+
+    public var eye: SIMD3<Float> = SIMD3<Float>(0, 0, 0)
+    public var target: SIMD3<Float> = SIMD3<Float>(0, 0, 0)
 
     public func updatePerspective(fovy: Float, aspect: Float, nearZ: Float, farZ: Float) {
         let ys = 1 / tanf(fovy * 0.5)
@@ -19,6 +20,9 @@ public class Camera {
     }
 
     public func lookAt(eye: SIMD3<Float>, target: SIMD3<Float>, up: SIMD3<Float>) {
+        self.eye = eye
+        self.target = target
+
         let z = normalize(eye - target)
         let x = normalize(cross(up, z))
         let y = cross(z, x)
@@ -28,5 +32,12 @@ public class Camera {
             SIMD4(x.z, y.z, z.z, 0),
             SIMD4(-dot(x, eye), -dot(y, eye), -dot(z, eye), 1)
         ))
+    }
+}
+
+// Extension for computed position
+extension Camera {
+    var position: SIMD3<Float> {
+        return eye
     }
 }

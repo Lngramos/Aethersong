@@ -3,7 +3,7 @@ import MetalKit
 @MainActor
 public class Renderer: NSObject, MTKViewDelegate {
     public let terrainRenderer: TerrainRenderer
-    private let camera = Camera()
+    public let camera = Camera()
     private let uniformBuffer: MTLBuffer
     private let maxBuffersInFlight = 3
     private var bufferIndex = 0

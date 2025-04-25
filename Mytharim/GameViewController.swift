@@ -1,22 +1,25 @@
-// File: GameViewController.swift
 import Cocoa
 import MetalKit
 
 final class GameViewController: NSViewController, GameViewInputDelegate {
     private var renderer: Renderer!
-    
+    private var debugOverlay: DebugOverlayView!
+    private var lastHoveredScreenPoint: SIMD2<Float>?
+    private var lastHoveredViewSize: SIMD2<Float>?
+
     override func loadView() {
-        self.view = GameView(frame: .zero)
+        self.view = GameView(
+            frame: NSRect(x: 0, y: 0, width: 1280, height: 720)
+        )
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        print("View is a:", type(of: view))
-        
+
         guard let mtkView = self.view as? GameView else {
             fatalError("View of GameViewController is not an GameView")
         }
-        
+
         // Initialize the renderer with the correct argument label
         renderer = Renderer(view: mtkView)
         mtkView.delegate = renderer
@@ -24,43 +27,84 @@ final class GameViewController: NSViewController, GameViewInputDelegate {
         mtkView.isPaused = false
         mtkView.enableSetNeedsDisplay = false
         mtkView.preferredFramesPerSecond = 60
+
+        debugOverlay = DebugOverlayView(
+            frame: CGRect(x: 0, y: 0, width: 300, height: 60)
+        )
+        debugOverlay.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(debugOverlay)
+
+        NSLayoutConstraint.activate([
+            debugOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            debugOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+        ])
+
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) {
+            [weak self] _ in
+            self?.updateDebugOverlayIfNeeded()
+        }
     }
-    
+
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(view)
     }
-    
-    func didClick(at screenPoint: SIMD2<Float>, viewSize: SIMD2<Float>) {
-        let (origin, direction) = renderer.terrainRenderer.rayFromScreen(screenPoint: screenPoint, viewSize: viewSize)
 
-        // Assume ground plane at y = 0
+    func didMoveMouse(at screenPoint: SIMD2<Float>, viewSize: SIMD2<Float>) {
+        lastHoveredScreenPoint = screenPoint
+        lastHoveredViewSize = viewSize
+    }
+
+    func didClick(at screenPoint: SIMD2<Float>, viewSize: SIMD2<Float>) {
+        // Future: Handle clicks (e.g., move player, select tile)
+    }
+
+    // Update debug overlay with latest mouse position and camera info
+    private func updateDebugOverlayIfNeeded() {
+        guard let screenPoint = lastHoveredScreenPoint,
+            let viewSize = lastHoveredViewSize
+        else { return }
+
+        let (origin, direction) = renderer.terrainRenderer.rayFromScreen(
+            screenPoint: screenPoint,
+            viewSize: viewSize
+        )
+        let cameraPosition = renderer.camera.position
+
         let t = -origin.y / direction.y
-        if t < 0 {
-            print("Click did not hit the ground plane.")
+        if !t.isFinite || t < 0 {
+            debugOverlay.updateText(
+                """
+                Camera Pos: (\(String(format: "%.1f", cameraPosition.x)), \(String(format: "%.1f", cameraPosition.y)), \(String(format: "%.1f", cameraPosition.z)))
+                World Hover: --
+                Tile Hover: --
+                Cursor Pos: (\(Int(screenPoint.x)), \(Int(screenPoint.y)))
+                """
+            )
             return
         }
 
         let hitPoint = origin + direction * t
-
         let worldX = hitPoint.x
         let worldZ = hitPoint.z
 
-        // Determine chunk coordinates
         let chunkX = Int(floor(worldX)) / Chunk.size
         let chunkY = Int(floor(worldZ)) / Chunk.size
         let chunkCoord = ChunkCoord(x: chunkX, y: chunkY)
 
-        // Determine local tile within the chunk
         let localX = Int(floor(worldX)) % Chunk.size
         let localY = Int(floor(worldZ)) % Chunk.size
 
-        // Correct for negative modulo
         let correctedLocalX = localX < 0 ? localX + Chunk.size : localX
         let correctedLocalY = localY < 0 ? localY + Chunk.size : localY
 
-        let tileCoord = TileCoord(chunk: chunkCoord, localX: correctedLocalX, localY: correctedLocalY)
-
-        print("Clicked tile: \(tileCoord)")
+        debugOverlay.updateText(
+            """
+            Camera Pos: (\(String(format: "%.1f", cameraPosition.x)), \(String(format: "%.1f", cameraPosition.y)), \(String(format: "%.1f", cameraPosition.z)))
+            World Hover: (\(Int(worldX)), \(Int(worldZ)))
+            Tile Hover: (\(chunkCoord.x), \(chunkCoord.y)) (\(correctedLocalX), \(correctedLocalY))
+            Cursor Pos: (\(Int(screenPoint.x)), \(Int(screenPoint.y)))
+            """
+        )
     }
 }
