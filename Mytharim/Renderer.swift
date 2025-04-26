@@ -189,8 +189,8 @@ public class Renderer: NSObject, MTKViewDelegate {
             switch key {
             case "a": yaw -= 0.02
             case "d": yaw += 0.02
-            case "w": pitch = min(.pi/2 - 0.1, pitch + 0.02)
-            case "s": pitch = max(-.pi/2 + 0.1, pitch - 0.02)
+            case "w": pitch = min(.pi / 2 - 0.25, pitch + 0.02) // clamp more safely
+            case "s": pitch = max(-.pi / 2 + 0.25, pitch - 0.02)
             case "+", "=": radius = max(4, radius - 0.2)
             case "-": radius = min(80, radius + 0.2)
             default: continue
