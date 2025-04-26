@@ -1,21 +1,34 @@
 import MetalKit
 
+protocol RendererDelegate: AnyObject {
+    func rendererDidRenderFrame()
+}
+
 @MainActor
 public class Renderer: NSObject, MTKViewDelegate {
+    weak var delegate: RendererDelegate?
+    
+    public static var sharedCameraViewMatrix: matrix_float4x4 = matrix_identity_float4x4
+    public static var sharedProjectionMatrix: matrix_float4x4 = matrix_identity_float4x4
+
+    public let device: MTLDevice
     public let terrainRenderer: TerrainRenderer
     public let camera = Camera()
+
+    private let entityManager: EntityManager
+    private var lastFrameTimestamp: CFTimeInterval = CACurrentMediaTime()
+
     private let uniformBuffer: MTLBuffer
     private let maxBuffersInFlight = 3
     private var bufferIndex = 0
 
-    // Camera orbit controls
     private var yaw: Float = .pi / 4
     private var pitch: Float = .pi / 4
     private var radius: Float = 12
     private var target = SIMD3<Float>(Float(Chunk.size)/2, 1, Float(Chunk.size)/2)
     private var heldKeys: Set<String> = []
 
-    public init(view: MTKView) {
+    public init(view: MTKView, entityManager: EntityManager, chunkProvider: ChunkProvider) {
         // Setup Metal device
         let device: MTLDevice
         if let dev = view.device {
@@ -26,27 +39,27 @@ public class Renderer: NSObject, MTKViewDelegate {
         } else {
             fatalError("Metal device not available")
         }
+        self.device = device
+        self.entityManager = entityManager
 
         // Load default library
         guard let library = device.makeDefaultLibrary() else {
             fatalError("Default Metal library not found")
         }
 
-        // Configure MTKView formats
-        view.device = device
+        // Configure MTKView
         view.colorPixelFormat = .bgra8Unorm_srgb
         view.depthStencilPixelFormat = .depth32Float_stencil8
         view.clearColor = MTLClearColor(red: 0.53, green: 0.81, blue: 0.98, alpha: 1)
 
-        // Create uniform buffer
-        let alignedSize = (MemoryLayout<Uniforms>.size + 0xFF) & -0x100
-        guard let uBuf = device.makeBuffer(length: alignedSize * maxBuffersInFlight,
-                                           options: .storageModeShared) else {
+        // Uniform buffer
+        let alignedSize = (MemoryLayout<Uniforms>.stride + 0xFF) & -0x100
+        guard let uBuf = device.makeBuffer(length: alignedSize * maxBuffersInFlight, options: .storageModeShared) else {
             fatalError("Unable to allocate uniform buffer")
         }
-        uniformBuffer = uBuf
+        self.uniformBuffer = uBuf
 
-        // Build a matching vertex descriptor
+        // Vertex descriptor
         let vDesc = MTLVertexDescriptor()
         vDesc.attributes[0].format = .float3
         vDesc.attributes[0].offset = 0
@@ -56,10 +69,6 @@ public class Renderer: NSObject, MTKViewDelegate {
         vDesc.attributes[1].bufferIndex = 0
         vDesc.layouts[0].stride = MemoryLayout<Float>.stride * 5
 
-        // Setup chunk provider
-        let chunkProvider = FileChunkProvider(basePath: FileManager.default.temporaryDirectory)
-
-        // Initialize terrain renderer with chunk provider
         do {
             terrainRenderer = try TerrainRenderer(
                 device: device,
@@ -71,72 +80,61 @@ public class Renderer: NSObject, MTKViewDelegate {
         } catch {
             fatalError("TerrainRenderer init failed: \(error)")
         }
+        
+        EntityRenderer.buildPipelineState(device: view.device!)
 
         super.init()
         view.delegate = self
         setupKeyboardMonitoring()
 
-        // Ensure MTKView animates
         view.isPaused = false
         view.enableSetNeedsDisplay = false
         view.preferredFramesPerSecond = 60
 
-        // Force projection + view setup before first frame
+        // Camera setup
         let aspect = Float(view.bounds.width) / Float(view.bounds.height)
-        camera.updatePerspective(fovy: radians_from_degrees(65),
-                                 aspect: aspect,
-                                 nearZ: 1.0,
-                                 farZ: 100.0)
+        camera.updatePerspective(fovy: radians_from_degrees(65), aspect: aspect, nearZ: 1.0, farZ: 100.0)
         updateCameraView()
     }
 
     // MARK: - MTKViewDelegate
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         let aspect = Float(size.width) / Float(size.height)
-        camera.updatePerspective(fovy: radians_from_degrees(65),
-                                 aspect: aspect,
-                                 nearZ: 1.0,
-                                 farZ: 100.0)
+        camera.updatePerspective(fovy: radians_from_degrees(65), aspect: aspect, nearZ: 1.0, farZ: 100.0)
         updateCameraView()
     }
 
     public func draw(in view: MTKView) {
-        // Cycle uniform buffer
+        let currentTime = CACurrentMediaTime()
+        let deltaTime = currentTime - lastFrameTimestamp
+        lastFrameTimestamp = currentTime
+
+        entityManager.updateAll(deltaTime: Float(deltaTime))
+        
         let idx = bufferIndex % maxBuffersInFlight
-        let alignedSize = (MemoryLayout<Uniforms>.size + 0xFF) & -0x100
+        let alignedSize = (MemoryLayout<Uniforms>.stride + 0xFF) & -0x100
         let offset = alignedSize * idx
         bufferIndex += 1
 
-        // Pass matrices to TerrainRenderer
-        terrainRenderer.updateCamera(
-            viewMatrix: camera.viewMatrix,
-            projectionMatrix: camera.projectionMatrix
-        )
+        let viewMatrix = camera.viewMatrix
+        let projectionMatrix = camera.projectionMatrix
+        GlobalUniforms.cameraViewMatrix = viewMatrix
+        GlobalUniforms.projectionMatrix = projectionMatrix
 
-        // Acquire encoder
+        terrainRenderer.updateCamera(viewMatrix: viewMatrix, projectionMatrix: projectionMatrix)
+
         guard let cmdQ = view.device?.makeCommandQueue(),
               let cmdBuf = cmdQ.makeCommandBuffer(),
               let rpd = view.currentRenderPassDescriptor,
-              let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: rpd) else {
-            return
-        }
+              let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: rpd) else { return }
 
-        // Calculate which chunk the target position is in
+        let target = SIMD3<Float>(Float(Chunk.size) / 2, 1, Float(Chunk.size) / 2)
         let chunkX = Int(target.x) / Chunk.size
         let chunkY = Int(target.z) / Chunk.size
         let centerChunk = ChunkCoord(x: chunkX, y: chunkY)
 
-        // Compute the player's current chunk
-        let playerChunk = ChunkCoord(
-            x: Int(target.x) / Chunk.size,
-            y: Int(target.z) / Chunk.size
-        )
-        
-        // Draw terrain centered around player
-        terrainRenderer.draw(
-            encoder: encoder,
-            centerChunk: playerChunk
-        )
+        terrainRenderer.draw(encoder: encoder, centerChunk: centerChunk)
+        entityManager.drawAll(encoder: encoder)
 
         encoder.endEncoding()
         if let drawable = view.currentDrawable {
@@ -145,7 +143,7 @@ public class Renderer: NSObject, MTKViewDelegate {
         cmdBuf.commit()
     }
 
-    // MARK: - Utilities
+    // MARK: - Private helpers
     private func radians_from_degrees(_ degrees: Float) -> Float {
         return (degrees / 180) * .pi
     }
@@ -169,9 +167,8 @@ public class Renderer: NSObject, MTKViewDelegate {
             guard let key = event.charactersIgnoringModifiers else { return nil }
             self?.heldKeys.remove(key)
             return nil
-        } // Prevent event swallowing
+        }
 
-        // Set up key repeat manually
         Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.handleHeldKeys()
@@ -179,18 +176,13 @@ public class Renderer: NSObject, MTKViewDelegate {
         }
     }
 
-    private func handleKeyDown(_ event: NSEvent) {
-        guard let key = event.charactersIgnoringModifiers else { return }
-        heldKeys.insert(key)
-    }
-
     private func handleHeldKeys() {
         for key in heldKeys {
             switch key {
             case "a": yaw -= 0.02
             case "d": yaw += 0.02
-            case "w": pitch = min(.pi / 2 - 0.25, pitch + 0.02) // clamp more safely
-            case "s": pitch = max(-.pi / 2 + 0.25, pitch - 0.02)
+            case "w": pitch = min(.pi/2 - 0.1, pitch + 0.02)
+            case "s": pitch = max(-.pi/2 + 0.1, pitch - 0.02)
             case "+", "=": radius = max(4, radius - 0.2)
             case "-": radius = min(80, radius + 0.2)
             default: continue
@@ -198,4 +190,5 @@ public class Renderer: NSObject, MTKViewDelegate {
         }
         updateCameraView()
     }
+
 }

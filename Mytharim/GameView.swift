@@ -10,12 +10,21 @@ protocol GameViewInputDelegate: AnyObject {
 final class GameView: MTKView {
     weak public var inputDelegate: GameViewInputDelegate?
 
-    override var acceptsFirstResponder: Bool { true }
+    override var acceptsFirstResponder: Bool {
+        return true
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        return true
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.acceptsMouseMovedEvents = true
         
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+
         if let scale = window?.screen?.backingScaleFactor, scale > 1.0 {
             print("Scaling view to \(scale)")
             self.layer?.contentsScale = scale

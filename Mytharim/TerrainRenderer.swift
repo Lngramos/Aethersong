@@ -25,8 +25,8 @@ public final class TerrainRenderer {
 
         // Setup render pipeline
         let pd = MTLRenderPipelineDescriptor()
-        pd.vertexFunction = library.makeFunction(name: "vertexShader")
-        pd.fragmentFunction = library.makeFunction(name: "fragmentShader")
+        pd.vertexFunction = library.makeFunction(name: "terrainVertexShader")
+        pd.fragmentFunction = library.makeFunction(name: "terrainFragmentShader")
         pd.vertexDescriptor = descriptor
         pd.colorAttachments[0].pixelFormat = pixelFormat
         pd.depthAttachmentPixelFormat = .depth32Float_stencil8
