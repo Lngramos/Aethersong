@@ -1,6 +1,6 @@
 //
 //  ShaderTypes.h
-//  Mytharim
+//  Aethersong
 //
 //  Created by Luis Ramos on 21/04/2025.
 //

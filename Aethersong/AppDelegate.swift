@@ -13,7 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
 
-        window.title = "Mytharim"
+        window.title = "Aethersong"
         window.contentViewController = GameViewController()
         window.makeKeyAndOrderFront(nil)
     }
