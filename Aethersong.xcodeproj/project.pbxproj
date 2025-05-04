@@ -10,9 +10,22 @@
 		A080F2C32DB6760300ABA44A /* Aethersong.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Aethersong.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A01CAD4B2DC7DF6A00B25227 /* Exceptions for "Aethersong" folder in "Aethersong" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A080F2C22DB6760300ABA44A /* Aethersong */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A080F2C52DB6760300ABA44A /* Aethersong */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A01CAD4B2DC7DF6A00B25227 /* Exceptions for "Aethersong" folder in "Aethersong" target */,
+			);
 			path = Aethersong;
 			sourceTree = "<group>";
 		};
@@ -267,6 +280,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aethersong.Aethersong;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -299,6 +313,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aethersong.Aethersong;
 				PRODUCT_NAME = "$(TARGET_NAME)";
