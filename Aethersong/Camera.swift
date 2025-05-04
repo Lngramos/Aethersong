@@ -7,31 +7,44 @@ public class Camera {
     public var eye: SIMD3<Float> = SIMD3<Float>(0, 0, 0)
     public var target: SIMD3<Float> = SIMD3<Float>(0, 0, 0)
 
-    public func updatePerspective(fovy: Float, aspect: Float, nearZ: Float, farZ: Float) {
+    public func updatePerspective(
+        fovy: Float,
+        aspect: Float,
+        nearZ: Float,
+        farZ: Float
+    ) {
         let ys = 1 / tanf(fovy * 0.5)
         let xs = ys / aspect
         let zs = farZ / (nearZ - farZ)
-        projectionMatrix = matrix_float4x4(columns: (
-            SIMD4(xs, 0,  0,   0),
-            SIMD4(0,  ys, 0,   0),
-            SIMD4(0,  0,  zs, -1),
-            SIMD4(0,  0, zs*nearZ, 0)
-        ))
+        projectionMatrix = matrix_float4x4(
+            columns: (
+                SIMD4(xs, 0, 0, 0),
+                SIMD4(0, ys, 0, 0),
+                SIMD4(0, 0, zs, -1),
+                SIMD4(0, 0, zs * nearZ, 0)
+            )
+        )
     }
 
-    public func lookAt(eye: SIMD3<Float>, target: SIMD3<Float>, up: SIMD3<Float>) {
+    public func lookAt(
+        eye: SIMD3<Float>,
+        target: SIMD3<Float>,
+        up: SIMD3<Float>
+    ) {
         self.eye = eye
         self.target = target
 
         let z = normalize(eye - target)
         let x = normalize(cross(up, z))
         let y = cross(z, x)
-        viewMatrix = matrix_float4x4(columns: (
-            SIMD4(x.x, y.x, z.x, 0),
-            SIMD4(x.y, y.y, z.y, 0),
-            SIMD4(x.z, y.z, z.z, 0),
-            SIMD4(-dot(x, eye), -dot(y, eye), -dot(z, eye), 1)
-        ))
+        viewMatrix = matrix_float4x4(
+            columns: (
+                SIMD4(x.x, y.x, z.x, 0),
+                SIMD4(x.y, y.y, z.y, 0),
+                SIMD4(x.z, y.z, z.z, 0),
+                SIMD4(-dot(x, eye), -dot(y, eye), -dot(z, eye), 1)
+            )
+        )
     }
 }
 

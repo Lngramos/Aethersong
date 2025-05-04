@@ -1,5 +1,3 @@
-// ----------------------------------------
-// File: Chunk.swift
 import Foundation
 
 public class Chunk {
@@ -19,7 +17,7 @@ public class Chunk {
             for y in 0..<Chunk.size {
                 let dx = Float(x - centre)
                 let dy = Float(y - centre)
-                let dist = sqrt(dx*dx + dy*dy)
+                let dist = sqrt(dx * dx + dy * dy)
                 tiles[x][y] = Tile(height: max(0, 4 - dist), type: 0)
             }
         }

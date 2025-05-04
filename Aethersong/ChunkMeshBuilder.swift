@@ -31,9 +31,12 @@ public final class FileChunkProvider: ChunkProvider {
             return chunk
         }
 
-        let fileURL = basePath.appendingPathComponent("chunk_\(coord.x)_\(coord.y).bin")
+        let fileURL = basePath.appendingPathComponent(
+            "chunk_\(coord.x)_\(coord.y).bin"
+        )
         if let data = try? Data(contentsOf: fileURL),
-           let chunk = decodeChunk(from: data) {
+            let chunk = decodeChunk(from: data)
+        {
             loadedChunks[coord] = chunk
             print("Loaded chunk at (\(coord.x), \(coord.y)) from disk")
             return chunk

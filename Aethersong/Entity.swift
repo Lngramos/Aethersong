@@ -1,5 +1,5 @@
-import simd
 import Metal
+import simd
 
 /// Base class for all world entities (players, NPCs, etc.)
 open class Entity {

@@ -1,5 +1,3 @@
-// ----------------------------------------
-// File: GameView.swift
 import MetalKit
 
 protocol GameViewInputDelegate: AnyObject {
@@ -21,7 +19,7 @@ final class GameView: MTKView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.acceptsMouseMovedEvents = true
-        
+
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
 
@@ -37,13 +35,20 @@ final class GameView: MTKView {
     override func keyUp(with event: NSEvent) {
     }
 
-
-    private func screenAndViewSize(for event: NSEvent) -> (SIMD2<Float>, SIMD2<Float>) {
+    private func screenAndViewSize(for event: NSEvent) -> (
+        SIMD2<Float>, SIMD2<Float>
+    ) {
         let locationInWindow = event.locationInWindow
         let localPoint = convert(locationInWindow, from: nil)
 
-        let screenPoint = SIMD2<Float>(Float(localPoint.x), Float(bounds.height - localPoint.y))
-        let viewSize = SIMD2<Float>(Float(drawableSize.width), Float(drawableSize.height))
+        let screenPoint = SIMD2<Float>(
+            Float(localPoint.x),
+            Float(bounds.height - localPoint.y)
+        )
+        let viewSize = SIMD2<Float>(
+            Float(drawableSize.width),
+            Float(drawableSize.height)
+        )
 
         return (screenPoint, viewSize)
     }

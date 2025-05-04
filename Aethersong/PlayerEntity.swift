@@ -12,23 +12,36 @@ public final class PlayerEntity: Entity {
     public init(startingTile: TileCoord, chunkProvider: ChunkProvider) {
         self.tileCoord = startingTile
         self.chunkProvider = chunkProvider
-        let pos = PlayerEntity.worldPosition(for: startingTile, using: chunkProvider)
+        let pos = PlayerEntity.worldPosition(
+            for: startingTile,
+            using: chunkProvider
+        )
         super.init(position: pos)
         buildCubeBuffersIfNeeded()
     }
 
     public func teleport(to tile: TileCoord) {
         self.tileCoord = tile
-        self.position = PlayerEntity.worldPosition(for: tile, using: chunkProvider)
+        self.position = PlayerEntity.worldPosition(
+            for: tile,
+            using: chunkProvider
+        )
     }
 
     override public func draw(encoder: MTLRenderCommandEncoder) {
-        guard let vb = Self.vertexBuffer, let ib = Self.indexBuffer else { return }
+        guard let vb = Self.vertexBuffer, let ib = Self.indexBuffer else {
+            return
+        }
 
         EntityRenderer.apply(to: encoder)
 
         var modelMatrix = matrix_identity_float4x4
-        modelMatrix.columns.3 = SIMD4<Float>(position.x, position.y, position.z, 1)
+        modelMatrix.columns.3 = SIMD4<Float>(
+            position.x,
+            position.y,
+            position.z,
+            1
+        )
 
         var uniforms = Uniforms(
             modelViewMatrix: GlobalUniforms.cameraViewMatrix * modelMatrix,
@@ -36,14 +49,22 @@ public final class PlayerEntity: Entity {
         )
 
         // Set uniforms for vertex shader only
-        encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 2)
+        encoder.setVertexBytes(
+            &uniforms,
+            length: MemoryLayout<Uniforms>.stride,
+            index: 2
+        )
 
         // Set vertex buffer
         encoder.setVertexBuffer(vb, offset: 0, index: 0)
 
         // Set color for fragment shader
-        var color = SIMD4<Float>(1, 0, 0, 1) // Red
-        encoder.setFragmentBytes(&color, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
+        var color = SIMD4<Float>(1, 0, 0, 1)  // Red
+        encoder.setFragmentBytes(
+            &color,
+            length: MemoryLayout<SIMD4<Float>>.stride,
+            index: 3
+        )
 
         encoder.setTriangleFillMode(.fill)
         encoder.drawIndexedPrimitives(
@@ -55,7 +76,10 @@ public final class PlayerEntity: Entity {
         )
     }
 
-    private static func worldPosition(for tile: TileCoord, using provider: ChunkProvider) -> SIMD3<Float> {
+    private static func worldPosition(
+        for tile: TileCoord,
+        using provider: ChunkProvider
+    ) -> SIMD3<Float> {
         let worldX = Float(tile.chunk.x * Chunk.size + tile.localX) + 0.5
         let worldZ = Float(tile.chunk.y * Chunk.size + tile.localY) + 0.5
 
@@ -74,13 +98,13 @@ public final class PlayerEntity: Entity {
         let cubeVertices: [Float] = [
             // x, y, z, u, v
             -s, -s, -s, 0.0, 0.0,
-             s, -s, -s, 0.0, 0.0,
-             s,  s, -s, 0.0, 0.0,
-            -s,  s, -s, 0.0, 0.0,
-            -s, -s,  s, 0.0, 0.0,
-             s, -s,  s, 0.0, 0.0,
-             s,  s,  s, 0.0, 0.0,
-            -s,  s,  s, 0.0, 0.0,
+            s, -s, -s, 0.0, 0.0,
+            s, s, -s, 0.0, 0.0,
+            -s, s, -s, 0.0, 0.0,
+            -s, -s, s, 0.0, 0.0,
+            s, -s, s, 0.0, 0.0,
+            s, s, s, 0.0, 0.0,
+            -s, s, s, 0.0, 0.0,
         ]
 
         let cubeIndices: [UInt16] = [
@@ -89,12 +113,20 @@ public final class PlayerEntity: Entity {
             0, 1, 5, 0, 5, 4,
             3, 7, 6, 3, 6, 2,
             1, 2, 6, 1, 6, 5,
-            0, 4, 7, 0, 7, 3
+            0, 4, 7, 0, 7, 3,
         ]
 
         let device = MTLCreateSystemDefaultDevice()!
-        Self.vertexBuffer = device.makeBuffer(bytes: cubeVertices, length: cubeVertices.count * MemoryLayout<Float>.stride, options: [])
-        Self.indexBuffer = device.makeBuffer(bytes: cubeIndices, length: cubeIndices.count * MemoryLayout<UInt16>.stride, options: [])
+        Self.vertexBuffer = device.makeBuffer(
+            bytes: cubeVertices,
+            length: cubeVertices.count * MemoryLayout<Float>.stride,
+            options: []
+        )
+        Self.indexBuffer = device.makeBuffer(
+            bytes: cubeIndices,
+            length: cubeIndices.count * MemoryLayout<UInt16>.stride,
+            options: []
+        )
         Self.indexCount = cubeIndices.count
     }
 }

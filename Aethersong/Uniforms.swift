@@ -1,6 +1,3 @@
-
-// ----------------------------------------
-// File: Uniforms.swift
 import simd
 
 /// Uniform buffer containing model-view and projection matrices

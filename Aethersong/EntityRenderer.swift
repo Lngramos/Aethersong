@@ -17,8 +17,12 @@ public enum EntityRenderer {
         let library = device.makeDefaultLibrary()!
 
         let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = library.makeFunction(name: "entityVertexShader")
-        descriptor.fragmentFunction = library.makeFunction(name: "entityFragmentShader")
+        descriptor.vertexFunction = library.makeFunction(
+            name: "entityVertexShader"
+        )
+        descriptor.fragmentFunction = library.makeFunction(
+            name: "entityFragmentShader"
+        )
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm_srgb
         descriptor.depthAttachmentPixelFormat = .depth32Float_stencil8
         descriptor.stencilAttachmentPixelFormat = .depth32Float_stencil8
@@ -36,12 +40,16 @@ public enum EntityRenderer {
         descriptor.vertexDescriptor = vDesc
         vertexDescriptor = vDesc
 
-        pipelineState = try! device.makeRenderPipelineState(descriptor: descriptor)
+        pipelineState = try! device.makeRenderPipelineState(
+            descriptor: descriptor
+        )
 
         let depthStencilDescriptor = MTLDepthStencilDescriptor()
         depthStencilDescriptor.depthCompareFunction = .less
         depthStencilDescriptor.isDepthWriteEnabled = true
-        depthStencilState = device.makeDepthStencilState(descriptor: depthStencilDescriptor)
+        depthStencilState = device.makeDepthStencilState(
+            descriptor: depthStencilDescriptor
+        )
     }
 
 }

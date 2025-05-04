@@ -1,5 +1,3 @@
-// ----------------------------------------
-// File: Tile.swift
 import Foundation
 
 public struct Tile {

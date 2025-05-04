@@ -25,7 +25,7 @@ final class DebugOverlayView: NSView {
 
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: 8)
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 8),
         ])
     }
 
