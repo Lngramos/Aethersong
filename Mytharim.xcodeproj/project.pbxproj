@@ -6,27 +6,8 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXContainerItemProxy section */
-		A080F2DA2DB6760500ABA44A /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A080F2BB2DB6760300ABA44A /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A080F2C22DB6760300ABA44A;
-			remoteInfo = Mytharim;
-		};
-		A080F2E42DB6760500ABA44A /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A080F2BB2DB6760300ABA44A /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A080F2C22DB6760300ABA44A;
-			remoteInfo = Mytharim;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXFileReference section */
 		A080F2C32DB6760300ABA44A /* Mytharim.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mytharim.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A080F2D92DB6760500ABA44A /* MytharimTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MytharimTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		A080F2E32DB6760500ABA44A /* MytharimUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MytharimUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -35,34 +16,10 @@
 			path = Mytharim;
 			sourceTree = "<group>";
 		};
-		A080F2DC2DB6760500ABA44A /* MytharimTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MytharimTests;
-			sourceTree = "<group>";
-		};
-		A080F2E62DB6760500ABA44A /* MytharimUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MytharimUITests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A080F2C02DB6760300ABA44A /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A080F2D62DB6760500ABA44A /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A080F2E02DB6760500ABA44A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -76,8 +33,6 @@
 			isa = PBXGroup;
 			children = (
 				A080F2C52DB6760300ABA44A /* Mytharim */,
-				A080F2DC2DB6760500ABA44A /* MytharimTests */,
-				A080F2E62DB6760500ABA44A /* MytharimUITests */,
 				A080F2C42DB6760300ABA44A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -86,8 +41,6 @@
 			isa = PBXGroup;
 			children = (
 				A080F2C32DB6760300ABA44A /* Mytharim.app */,
-				A080F2D92DB6760500ABA44A /* MytharimTests.xctest */,
-				A080F2E32DB6760500ABA44A /* MytharimUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -117,52 +70,6 @@
 			productReference = A080F2C32DB6760300ABA44A /* Mytharim.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A080F2D82DB6760500ABA44A /* MytharimTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = A080F2F02DB6760500ABA44A /* Build configuration list for PBXNativeTarget "MytharimTests" */;
-			buildPhases = (
-				A080F2D52DB6760500ABA44A /* Sources */,
-				A080F2D62DB6760500ABA44A /* Frameworks */,
-				A080F2D72DB6760500ABA44A /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				A080F2DB2DB6760500ABA44A /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				A080F2DC2DB6760500ABA44A /* MytharimTests */,
-			);
-			name = MytharimTests;
-			packageProductDependencies = (
-			);
-			productName = MytharimTests;
-			productReference = A080F2D92DB6760500ABA44A /* MytharimTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		A080F2E22DB6760500ABA44A /* MytharimUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = A080F2F32DB6760500ABA44A /* Build configuration list for PBXNativeTarget "MytharimUITests" */;
-			buildPhases = (
-				A080F2DF2DB6760500ABA44A /* Sources */,
-				A080F2E02DB6760500ABA44A /* Frameworks */,
-				A080F2E12DB6760500ABA44A /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				A080F2E52DB6760500ABA44A /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				A080F2E62DB6760500ABA44A /* MytharimUITests */,
-			);
-			name = MytharimUITests;
-			packageProductDependencies = (
-			);
-			productName = MytharimUITests;
-			productReference = A080F2E32DB6760500ABA44A /* MytharimUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -175,14 +82,6 @@
 				TargetAttributes = {
 					A080F2C22DB6760300ABA44A = {
 						CreatedOnToolsVersion = 16.3;
-					};
-					A080F2D82DB6760500ABA44A = {
-						CreatedOnToolsVersion = 16.3;
-						TestTargetID = A080F2C22DB6760300ABA44A;
-					};
-					A080F2E22DB6760500ABA44A = {
-						CreatedOnToolsVersion = 16.3;
-						TestTargetID = A080F2C22DB6760300ABA44A;
 					};
 				};
 			};
@@ -201,28 +100,12 @@
 			projectRoot = "";
 			targets = (
 				A080F2C22DB6760300ABA44A /* Mytharim */,
-				A080F2D82DB6760500ABA44A /* MytharimTests */,
-				A080F2E22DB6760500ABA44A /* MytharimUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A080F2C12DB6760300ABA44A /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A080F2D72DB6760500ABA44A /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A080F2E12DB6760500ABA44A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -239,34 +122,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A080F2D52DB6760500ABA44A /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A080F2DF2DB6760500ABA44A /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		A080F2DB2DB6760500ABA44A /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A080F2C22DB6760300ABA44A /* Mytharim */;
-			targetProxy = A080F2DA2DB6760500ABA44A /* PBXContainerItemProxy */;
-		};
-		A080F2E52DB6760500ABA44A /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A080F2C22DB6760300ABA44A /* Mytharim */;
-			targetProxy = A080F2E42DB6760500ABA44A /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A080F2EB2DB6760500ABA44A /* Debug */ = {
@@ -451,74 +307,6 @@
 			};
 			name = Release;
 		};
-		A080F2F12DB6760500ABA44A /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = D8J2M6QU6Q;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 15.4;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mytharim.MytharimTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mytharim.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Mytharim";
-			};
-			name = Debug;
-		};
-		A080F2F22DB6760500ABA44A /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = D8J2M6QU6Q;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 15.4;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mytharim.MytharimTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mytharim.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Mytharim";
-			};
-			name = Release;
-		};
-		A080F2F42DB6760500ABA44A /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = D8J2M6QU6Q;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mytharim.MytharimUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = Mytharim;
-			};
-			name = Debug;
-		};
-		A080F2F52DB6760500ABA44A /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = D8J2M6QU6Q;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mytharim.MytharimUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = Mytharim;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -536,24 +324,6 @@
 			buildConfigurations = (
 				A080F2EE2DB6760500ABA44A /* Debug */,
 				A080F2EF2DB6760500ABA44A /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		A080F2F02DB6760500ABA44A /* Build configuration list for PBXNativeTarget "MytharimTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A080F2F12DB6760500ABA44A /* Debug */,
-				A080F2F22DB6760500ABA44A /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		A080F2F32DB6760500ABA44A /* Build configuration list for PBXNativeTarget "MytharimUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A080F2F42DB6760500ABA44A /* Debug */,
-				A080F2F52DB6760500ABA44A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
