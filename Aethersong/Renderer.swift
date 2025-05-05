@@ -290,8 +290,8 @@ public class Renderer: NSObject, MTKViewDelegate {
             switch key {
             case "a": yaw -= 0.02
             case "d": yaw += 0.02
-            case "s": pitch = min(.pi / 2 - 0.1, pitch + 0.02)  // Inverted: S moves camera up
-            case "w": pitch = max(-.pi / 2 + 0.1, pitch - 0.02) // Inverted: W moves camera down
+            case "s": pitch = min(.pi / 3, pitch + 0.02)  // Inverted: S moves camera up, limited to 60 degrees
+            case "w": pitch = max(0.1, pitch - 0.02) // Inverted: W moves camera down, limited to avoid flipping
             case "+", "=": radius = max(4, radius - 0.2)
             case "-": radius = min(80, radius + 0.2)
             default: continue
