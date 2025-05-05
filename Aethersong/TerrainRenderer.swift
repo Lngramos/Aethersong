@@ -13,6 +13,7 @@ public final class TerrainRenderer {
     private let chunkProvider: ChunkProvider
     private var cameraViewMatrix: matrix_float4x4 = matrix_identity_float4x4
     private var projectionMatrix: matrix_float4x4 = matrix_identity_float4x4
+    private var highlightedTile: TileCoord? = nil
 
     // Line thickening resources
     private let lineThickeningPipeline: MTLComputePipelineState
@@ -22,6 +23,19 @@ public final class TerrainRenderer {
     private var quadVertexBuffer: MTLBuffer
     private var lineThickness: Float = 5.0
     private var noDepthWriteState: MTLDepthStencilState
+    
+    public func setHighlightedTile(_ tile: TileCoord) {
+        // Check if this is a different tile than the currently highlighted one
+        if highlightedTile?.chunk.x != tile.chunk.x || 
+           highlightedTile?.chunk.y != tile.chunk.y ||
+           highlightedTile?.localX != tile.localX || 
+           highlightedTile?.localY != tile.localY {
+            
+            print("Highlighting tile: Chunk(\(tile.chunk.x), \(tile.chunk.y)) Local(\(tile.localX), \(tile.localY))")
+        }
+        
+        highlightedTile = tile
+    }
 
     public init(
         device: MTLDevice,
@@ -52,50 +66,39 @@ public final class TerrainRenderer {
         pd.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
         pd.colorAttachments[0].sourceAlphaBlendFactor = .sourceAlpha
         pd.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
-        pd.colorAttachments[0].destinationAlphaBlendFactor =
-            .oneMinusSourceAlpha
+        pd.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
 
         pd.depthAttachmentPixelFormat = .depth32Float_stencil8
         pd.stencilAttachmentPixelFormat = .depth32Float_stencil8
-        pipelineState = try device.makeRenderPipelineState(descriptor: pd)
 
-        // Configure depth and stencil testing
-        let dsDesc = MTLDepthStencilDescriptor()
-        dsDesc.depthCompareFunction = .less
-        dsDesc.isDepthWriteEnabled = true
-        depthState = device.makeDepthStencilState(descriptor: dsDesc)!
+        do {
+            pipelineState = try device.makeRenderPipelineState(descriptor: pd)
+        } catch {
+            print("ERROR: Failed to create pipeline state: \(error)")
+            throw error
+        }
+
+        // Setup depth stencil state
+        let dsd = MTLDepthStencilDescriptor()
+        dsd.depthCompareFunction = .less
+        dsd.isDepthWriteEnabled = true
+        depthState = device.makeDepthStencilState(descriptor: dsd)!
 
         // Setup line thickening compute pipeline
-        guard let lineThickeningFunction = library.makeFunction(name: "lineThickeningKernel") else {
-            print("ERROR: Failed to find lineThickeningKernel function in Metal library")
-            throw NSError(domain: "TerrainRenderer", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create line thickening kernel function"])
-        }
-        
+        let computeFunction = library.makeFunction(name: "thickenLines")
         do {
-            lineThickeningPipeline = try device.makeComputePipelineState(function: lineThickeningFunction)
+            lineThickeningPipeline = try device.makeComputePipelineState(
+                function: computeFunction!
+            )
         } catch {
-            print("ERROR: Failed to create compute pipeline state: \(error)")
+            print("ERROR: Failed to create compute pipeline: \(error)")
             throw error
         }
         
-        // Setup composite pipeline for rendering the thickened lines back to the screen
+        // Setup composite pipeline for drawing thickened lines
         let compositeDesc = MTLRenderPipelineDescriptor()
-        
-        guard let vertexFunction = library.makeFunction(name: "compositeVertexShader") else {
-            print("ERROR: Failed to find compositeVertexShader function in Metal library")
-            throw NSError(domain: "TerrainRenderer", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to find compositeVertexShader"])
-        }
-        
-        guard let fragmentFunction = library.makeFunction(name: "compositeFragmentShader") else {
-            print("ERROR: Failed to find compositeFragmentShader function in Metal library")
-            throw NSError(domain: "TerrainRenderer", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to find compositeFragmentShader"])
-        }
-        
-        compositeDesc.vertexFunction = vertexFunction
-        compositeDesc.fragmentFunction = fragmentFunction
-        compositeDesc.colorAttachments[0].pixelFormat = pixelFormat  // Use the same format as the main render target
-        
-        // Set depth and stencil formats to match the main render target
+        compositeDesc.vertexFunction = library.makeFunction(name: "quadVertexShader")
+        compositeDesc.fragmentFunction = library.makeFunction(name: "compositeFragmentShader")
         compositeDesc.depthAttachmentPixelFormat = .depth32Float_stencil8
         compositeDesc.stencilAttachmentPixelFormat = .depth32Float_stencil8
         
@@ -183,34 +186,70 @@ public final class TerrainRenderer {
     }
 
     /// Converts a screen-space point into a ray in world space
+    @MainActor
     public func rayFromScreen(screenPoint: SIMD2<Float>, viewSize: SIMD2<Float>)
         -> (origin: SIMD3<Float>, direction: SIMD3<Float>)
     {
+        // Convert screen coordinates to normalized device coordinates (NDC)
+        // For Metal, (0,0) is top-left of the screen
+        // NDC space goes from -1 to 1 in both dimensions
         let ndc = SIMD2<Float>(
             x: (2.0 * screenPoint.x / viewSize.x) - 1.0,
-            y: 1.0 - (2.0 * screenPoint.y / viewSize.y)
+            y: 1.0 - (2.0 * screenPoint.y / viewSize.y)  // Flip Y for Metal's coordinate system
         )
-
-        let invProj = projectionMatrix.inverse
-        let invView = cameraViewMatrix.inverse
-
-        let nearPoint = SIMD4<Float>(ndc.x, ndc.y, 0, 1)
-        let farPoint = SIMD4<Float>(ndc.x, ndc.y, 1, 1)
-
-        let nearWorld = invView * invProj * nearPoint
-        let farWorld = invView * invProj * farPoint
-
-        let rayOrigin = (nearWorld / nearWorld.w).xyz
-        let rayTarget = (farWorld / farWorld.w).xyz
-        let rayDirection = simd_normalize(rayTarget - rayOrigin)
-
+        
+        // Create homogeneous clip space coordinates for near and far points
+        // Using 0.0 for near plane and 1.0 for far plane in normalized depth
+        let clipNear = SIMD4<Float>(ndc.x, ndc.y, 0.0, 1.0)
+        let clipFar = SIMD4<Float>(ndc.x, ndc.y, 1.0, 1.0)
+        
+        // Get the inverse view-projection matrix using GlobalUniforms
+        let invViewProj = (GlobalUniforms.projectionMatrix * GlobalUniforms.cameraViewMatrix).inverse
+        
+        // Transform from clip space to world space
+        var worldNear = invViewProj * clipNear
+        var worldFar = invViewProj * clipFar
+        
+        // Perform perspective division to get 3D positions
+        worldNear = worldNear / worldNear.w
+        worldFar = worldFar / worldFar.w
+        
+        // Extract the 3D positions
+        let rayOrigin = worldNear.xyz
+        let rayDirection = simd_normalize(worldFar.xyz - rayOrigin)
+        
         return (origin: rayOrigin, direction: rayDirection)
+    }
+    
+    /// Verifies that the matrices used for ray casting match those used for rendering
+    @MainActor
+    public func verifyMatrices() {
+        print("=== MATRIX VERIFICATION ===")
+        print("Projection matrix used for rendering:")
+        printMatrix(projectionMatrix)
+        print("View matrix used for rendering:")
+        printMatrix(cameraViewMatrix)
+        
+        // Compare with the global uniforms matrices
+        print("GlobalUniforms camera view matrix:")
+        printMatrix(GlobalUniforms.cameraViewMatrix)
+        print("GlobalUniforms projection matrix:")
+        printMatrix(GlobalUniforms.projectionMatrix)
+        print("===========================")
+    }
+
+    private func printMatrix(_ matrix: matrix_float4x4) {
+        print("[\(matrix.columns.0.x), \(matrix.columns.1.x), \(matrix.columns.2.x), \(matrix.columns.3.x)]")
+        print("[\(matrix.columns.0.y), \(matrix.columns.1.y), \(matrix.columns.2.y), \(matrix.columns.3.y)]")
+        print("[\(matrix.columns.0.z), \(matrix.columns.1.z), \(matrix.columns.2.z), \(matrix.columns.3.z)]")
+        print("[\(matrix.columns.0.w), \(matrix.columns.1.w), \(matrix.columns.2.w), \(matrix.columns.3.w)]")
     }
 
     /// Draws a grid of terrain chunks centered around the given chunk coordinate
     public func draw(
         encoder: MTLRenderCommandEncoder,
-        centerChunk: ChunkCoord
+        centerChunk: ChunkCoord,
+        playerPosition: SIMD3<Float>? = nil
     ) {
         // Get the current viewport dimensions
         // For high DPI displays, we need to use higher resolution
@@ -222,8 +261,18 @@ public final class TerrainRenderer {
         // Update render textures to match viewport size
         updateRenderTextures(width: viewportWidth, height: viewportHeight)
 
+        // If player position is provided, use it to determine which chunks to render
+        let renderCenterChunk: ChunkCoord
+        if let playerPos = playerPosition {
+            let playerChunkX = Int(floor(playerPos.x / Float(Chunk.size)))
+            let playerChunkZ = Int(floor(playerPos.z / Float(Chunk.size)))
+            renderCenterChunk = ChunkCoord(x: playerChunkX, y: playerChunkZ)
+        } else {
+            renderCenterChunk = centerChunk
+        }
+
         // First pass: Draw terrain to main render target
-        drawTerrainOnly(encoder: encoder, centerChunk: centerChunk)
+        drawTerrainOnly(encoder: encoder, centerChunk: renderCenterChunk)
 
         // Skip post-processing if textures aren't ready
         guard let lineRenderTexture = lineRenderTexture,
@@ -251,7 +300,7 @@ public final class TerrainRenderer {
             return
         }
 
-        drawLinesOnly(encoder: lineEncoder, centerChunk: centerChunk)
+        drawLinesOnly(encoder: lineEncoder, centerChunk: renderCenterChunk)
         lineEncoder.endEncoding()
 
         // Third pass: Apply compute shader to thicken lines
@@ -301,28 +350,21 @@ public final class TerrainRenderer {
     }
 
     /// Creates a render pass descriptor for rendering to a texture
-    private func createRenderPassDescriptor(texture: MTLTexture)
-        -> MTLRenderPassDescriptor
-    {
-        let renderPassDesc = MTLRenderPassDescriptor()
-        renderPassDesc.colorAttachments[0].texture = texture
-        renderPassDesc.colorAttachments[0].loadAction = .clear
-        renderPassDesc.colorAttachments[0].storeAction = .store
-        renderPassDesc.colorAttachments[0].clearColor = MTLClearColor(
+    private func createRenderPassDescriptor(texture: MTLTexture) -> MTLRenderPassDescriptor {
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = texture
+        rpd.colorAttachments[0].loadAction = .clear
+        rpd.colorAttachments[0].storeAction = .store
+        rpd.colorAttachments[0].clearColor = MTLClearColor(
             red: 0,
             green: 0,
             blue: 0,
             alpha: 0
         )
-        
-        // Explicitly set no depth or stencil attachment
-        renderPassDesc.depthAttachment.texture = nil
-        renderPassDesc.stencilAttachment.texture = nil
-        
-        return renderPassDesc
+        return rpd
     }
 
-    /// Draws only the terrain (fill mode) for the given chunks
+    /// Draws only the terrain without lines
     private func drawTerrainOnly(
         encoder: MTLRenderCommandEncoder,
         centerChunk: ChunkCoord
@@ -330,23 +372,25 @@ public final class TerrainRenderer {
         drawTerrainWithMode(
             encoder: encoder,
             centerChunk: centerChunk,
-            drawLines: false,
-            customPipelineState: nil
+            drawLines: false
         )
     }
 
-    /// Draws only the lines (wireframe mode) for the given chunks
+    /// Draws only the lines for the terrain
     private func drawLinesOnly(
         encoder: MTLRenderCommandEncoder,
         centerChunk: ChunkCoord
     ) {
-        // Create a new pipeline state specifically for the line render texture
-        // that matches its pixel format (RGBA8Unorm)
+        // Create a pipeline state for line rendering
         let pd = MTLRenderPipelineDescriptor()
-        pd.vertexFunction = device.makeDefaultLibrary()?.makeFunction(name: "terrainVertexShader")
-        pd.fragmentFunction = device.makeDefaultLibrary()?.makeFunction(name: "terrainFragmentShader")
+        pd.vertexFunction = device.makeDefaultLibrary()?.makeFunction(
+            name: "terrainVertexShader"
+        )
+        pd.fragmentFunction = device.makeDefaultLibrary()?.makeFunction(
+            name: "terrainLinesFragmentShader"
+        )
         pd.vertexDescriptor = vertexDescriptor
-        pd.colorAttachments[0].pixelFormat = .rgba8Unorm  // Match the texture format
+        pd.colorAttachments[0].pixelFormat = .rgba8Unorm
         
         // Enable alpha blending for transparent contour lines
         pd.colorAttachments[0].isBlendingEnabled = true
@@ -403,9 +447,10 @@ public final class TerrainRenderer {
             encoder.setDepthStencilState(depthState)
         }
 
-        let radius = 1
+        // Limit the rendering radius to reduce lag
+        let radius = 2  // Reduced from 3 to 2 to improve performance
         chunkProvider.updateChunks(around: centerChunk)
-
+        
         for dx in -radius...radius {
             for dy in -radius...radius {
                 let coord = ChunkCoord(
@@ -413,7 +458,13 @@ public final class TerrainRenderer {
                     y: centerChunk.y + dy
                 )
                 let chunk = chunkProvider.chunk(at: coord)
-
+                
+                // Skip chunks that are too far away (optional optimization)
+                let distanceSquared = dx*dx + dy*dy
+                if distanceSquared > radius*radius {
+                    continue
+                }
+                
                 // Use cached mesh if available, otherwise build and cache
                 let mesh: MTKMesh
                 if let cached = meshCache[coord] {
@@ -435,78 +486,114 @@ public final class TerrainRenderer {
                 }
 
                 // Translate chunk into world space based on its coordinates
-                let tx = Float(coord.x * (Chunk.size - 1))
-                let ty = Float(coord.y * (Chunk.size - 1))
+                // Fix: Ensure chunks are positioned correctly without gaps
+                // Since our mesh now goes from 0 to size (inclusive), we need to position chunks
+                // at exact multiples of chunk size
+                let tx = Float(coord.x * Chunk.size)
+                let ty = Float(coord.y * Chunk.size)
                 let modelMatrix = matrix_float4x4.makeTranslation(
                     x: tx,
                     y: 0,
                     z: ty
                 )
 
-                // Prepare uniforms with transformed view
-                var uniforms = Uniforms(
-                    modelViewMatrix: matrix_multiply(
-                        cameraViewMatrix,
-                        modelMatrix
-                    ),
+                // Set uniforms for vertex shader
+                var uniforms = TerrainUniforms(
+                    modelViewMatrix: cameraViewMatrix * modelMatrix,
                     projectionMatrix: projectionMatrix
                 )
-
-                // Bind uniforms and vertex data
                 encoder.setVertexBytes(
                     &uniforms,
-                    length: MemoryLayout<Uniforms>.stride,
+                    length: MemoryLayout<TerrainUniforms>.stride,
                     index: 2
+                )
+
+                // Set fragment shader parameters
+                var params = TerrainParams(
+                    drawLines: drawLines ? 1 : 0,
+                    lineWidth: 0.05,
+                    lineColor: SIMD4<Float>(0, 0, 0, 1)
                 )
                 encoder.setFragmentBytes(
-                    &uniforms,
-                    length: MemoryLayout<Uniforms>.stride,
-                    index: 2
-                )
-                encoder.setVertexBuffer(
-                    mesh.vertexBuffers[0].buffer,
-                    offset: mesh.vertexBuffers[0].offset,
+                    &params,
+                    length: MemoryLayout<TerrainParams>.stride,
                     index: 0
                 )
 
-                // Draw each submesh with solid and wireframe modes
-                let baseColors: [SIMD4<Float>] = [
-                    SIMD4(0, 1, 0, 1), SIMD4(0, 0, 0, 0.5),
-                ]
-
-                // If drawing lines, only draw the wireframe mode
-                // If drawing terrain, only draw the fill mode
-                let modes: [MTLTriangleFillMode]
-                let colorIndices: [Int]
-
-                if drawLines {
-                    modes = [.lines]
-                    colorIndices = [1]  // Black transparent lines
-                } else {
-                    modes = [.fill]
-                    colorIndices = [0]  // Green terrain
-                }
-
-                for i in 0..<modes.count {
-                    var color = baseColors[colorIndices[i]]
-                    encoder.setTriangleFillMode(modes[i])
-                    encoder.setFragmentBytes(
-                        &color,
-                        length: MemoryLayout<SIMD4<Float>>.stride,
-                        index: 3
-                    )
-
-                    for submesh in mesh.submeshes {
-                        encoder.drawIndexedPrimitives(
-                            type: submesh.primitiveType,
-                            indexCount: submesh.indexCount,
-                            indexType: submesh.indexType,
-                            indexBuffer: submesh.indexBuffer.buffer,
-                            indexBufferOffset: submesh.indexBuffer.offset
+                // Draw the mesh
+                for submesh in mesh.submeshes {
+                    // Check if any tile in this chunk is highlighted
+                    if let highlightedTile = highlightedTile,
+                       highlightedTile.chunk.x == coord.x && 
+                       highlightedTile.chunk.y == coord.y {
+                        
+                        // Set highlighted tile info for fragment shader
+                        var highlightInfo = HighlightInfo(
+                            isHighlighted: 1,
+                            tileX: Int32(highlightedTile.localX),
+                            tileY: Int32(highlightedTile.localY),
+                            highlightColor: SIMD4<Float>(1, 1, 0, 1)  // Yellow highlight
+                        )
+                        encoder.setFragmentBytes(
+                            &highlightInfo,
+                            length: MemoryLayout<HighlightInfo>.stride,
+                            index: 1
+                        )
+                    } else {
+                        // No highlight
+                        var highlightInfo = HighlightInfo(
+                            isHighlighted: 0,
+                            tileX: 0,
+                            tileY: 0,
+                            highlightColor: SIMD4<Float>(0, 0, 0, 0)
+                        )
+                        encoder.setFragmentBytes(
+                            &highlightInfo,
+                            length: MemoryLayout<HighlightInfo>.stride,
+                            index: 1
                         )
                     }
+                    
+                    encoder.setVertexBuffer(
+                        mesh.vertexBuffers[0].buffer,
+                        offset: mesh.vertexBuffers[0].offset,
+                        index: 0
+                    )
+                    encoder.drawIndexedPrimitives(
+                        type: .triangle,
+                        indexCount: submesh.indexCount,
+                        indexType: submesh.indexType,
+                        indexBuffer: submesh.indexBuffer.buffer,
+                        indexBufferOffset: submesh.indexBuffer.offset
+                    )
                 }
             }
         }
+    }
+}
+
+// MARK: - Shader Structs
+
+struct TerrainUniforms {
+    var modelViewMatrix: matrix_float4x4
+    var projectionMatrix: matrix_float4x4
+}
+
+struct TerrainParams {
+    var drawLines: UInt32
+    var lineWidth: Float
+    var lineColor: SIMD4<Float>
+}
+
+struct HighlightInfo {
+    var isHighlighted: UInt32
+    var tileX: Int32
+    var tileY: Int32
+    var highlightColor: SIMD4<Float>
+}
+
+extension SIMD4 {
+    var xyz: SIMD3<Scalar> {
+        return SIMD3<Scalar>(x, y, z)
     }
 }

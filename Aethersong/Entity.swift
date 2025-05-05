@@ -2,6 +2,7 @@ import Metal
 import simd
 
 /// Base class for all world entities (players, NPCs, etc.)
+@MainActor
 open class Entity {
     public var position: SIMD3<Float>
 

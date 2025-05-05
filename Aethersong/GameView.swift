@@ -40,10 +40,11 @@ final class GameView: MTKView {
     ) {
         let locationInWindow = event.locationInWindow
         let localPoint = convert(locationInWindow, from: nil)
-
+        
+        // Use drawableSize instead of bounds.size for high DPI displays
         let screenPoint = SIMD2<Float>(
-            Float(localPoint.x),
-            Float(bounds.height - localPoint.y)
+            Float(localPoint.x * (drawableSize.width / bounds.width)),
+            Float((bounds.height - localPoint.y) * (drawableSize.height / bounds.height))
         )
         let viewSize = SIMD2<Float>(
             Float(drawableSize.width),

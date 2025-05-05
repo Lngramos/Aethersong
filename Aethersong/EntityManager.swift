@@ -1,8 +1,10 @@
 import Metal
+import Foundation
 
 /// Manages all active entities in the world
+@MainActor
 public final class EntityManager {
-    private var entities: [Entity] = []
+    private(set) var entities: [Entity] = []
     private let chunkProvider: ChunkProvider
 
     public init(chunkProvider: ChunkProvider) {

@@ -33,6 +33,11 @@ public class Renderer: NSObject, MTKViewDelegate {
         Float(Chunk.size) / 2
     )
     private var heldKeys: Set<String> = []
+    
+    // Make camera target accessible for debugging
+    public var cameraTarget: SIMD3<Float> {
+        return target
+    }
 
     public init(
         view: MTKView,
