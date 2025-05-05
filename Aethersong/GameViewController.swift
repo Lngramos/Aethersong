@@ -254,52 +254,166 @@ final class GameViewController: NSViewController, GameViewInputDelegate {
             viewSize: viewSize
         )
         
-        // Find intersection with terrain plane (y=0)
         // Only proceed if the ray is pointing downward
         if direction.y >= 0 {
             return nil
         }
         
-        let t = -origin.y / direction.y
-        guard t.isFinite && t > 0 else { 
+        // We'll use a more precise ray-terrain intersection algorithm
+        // This is a binary search approach to find the exact intersection point
+        
+        // First, find a rough intersection with y=0 plane to get bounds for our search
+        let t0 = -origin.y / direction.y
+        guard t0.isFinite && t0 > 0 else { 
             return nil 
         }
         
-        // Get exact world position of hit point
-        let hitPoint = origin + direction * t
-        let worldX = hitPoint.x
-        let worldZ = hitPoint.z
-        
-        // Store the hit point for visual debugging
-        lastHitPoint = hitPoint
-        
-        // Calculate chunk coordinates
         let chunkSize = Float(Chunk.size)
         
-        // Use floor division for both positive and negative coordinates
-        let chunkX = Int(floor(worldX / chunkSize))
-        let chunkY = Int(floor(worldZ / chunkSize))
+        // Define our search range
+        // Start from a point above the terrain
+        var minDistance: Float = 0
+        // End at a point well below any possible terrain
+        var maxDistance: Float = t0 * 2
         
-        // Calculate local coordinates within chunk
-        // Use the fractional part of the world coordinates
-        let localXFloat = worldX - (Float(chunkX) * chunkSize)
-        let localYFloat = worldZ - (Float(chunkY) * chunkSize)
+        // Binary search parameters
+        let maxIterations = 20
+        let epsilon: Float = 0.01  // Precision threshold
         
-        // Convert to integer tile coordinates
-        let localX = Int(floor(localXFloat))
-        let localY = Int(floor(localYFloat))
+        var bestHitPoint: SIMD3<Float>? = nil
+        var bestTileCoord: TileCoord? = nil
+        var minHeightDifference: Float = Float.greatestFiniteMagnitude
         
-        // Ensure coordinates are within valid range
-        let clampedLocalX = max(0, min(localX, Chunk.size - 1))
-        let clampedLocalY = max(0, min(localY, Chunk.size - 1))
+        // Binary search for the intersection point
+        for _ in 0..<maxIterations {
+            // Calculate the midpoint of our search range
+            let midDistance = (minDistance + maxDistance) / 2
+            let testPoint = origin + direction * midDistance
+            
+            // Calculate chunk and tile coordinates for this test point
+            let testChunkX = Int(floor(testPoint.x / chunkSize))
+            let testChunkY = Int(floor(testPoint.z / chunkSize))
+            
+            // Calculate local coordinates within chunk
+            let testLocalXFloat = testPoint.x - (Float(testChunkX) * chunkSize)
+            let testLocalYFloat = testPoint.z - (Float(testChunkY) * chunkSize)
+            
+            // Convert to integer tile coordinates
+            let testLocalX = Int(floor(testLocalXFloat))
+            let testLocalY = Int(floor(testLocalYFloat))
+            
+            // Ensure coordinates are within valid range
+            if testLocalX < 0 || testLocalX >= Chunk.size || testLocalY < 0 || testLocalY >= Chunk.size {
+                // Outside valid chunk bounds, adjust search range
+                minDistance = midDistance
+                continue
+            }
+            
+            // Get the chunk and tile at test position
+            let testChunk = chunkProvider.chunk(at: ChunkCoord(x: testChunkX, y: testChunkY))
+            let tileHeight = testChunk.tiles[testLocalX][testLocalY].height
+            
+            // Calculate height difference
+            let heightDifference = testPoint.y - tileHeight
+            
+            // If we're very close to the surface, we've found our intersection
+            if abs(heightDifference) < epsilon {
+                bestHitPoint = testPoint
+                bestTileCoord = TileCoord(
+                    chunk: ChunkCoord(x: testChunkX, y: testChunkY),
+                    localX: testLocalX,
+                    localY: testLocalY
+                )
+                break
+            }
+            
+            // Track the closest point to the surface we've found
+            if abs(heightDifference) < minHeightDifference {
+                minHeightDifference = abs(heightDifference)
+                bestHitPoint = testPoint
+                bestTileCoord = TileCoord(
+                    chunk: ChunkCoord(x: testChunkX, y: testChunkY),
+                    localX: testLocalX,
+                    localY: testLocalY
+                )
+            }
+            
+            // Adjust our search range
+            if heightDifference > 0 {
+                // We're above the terrain, search further along the ray
+                minDistance = midDistance
+            } else {
+                // We're below the terrain, search closer to the origin
+                maxDistance = midDistance
+            }
+            
+            // If our search range is very small, we've converged
+            if maxDistance - minDistance < epsilon {
+                break
+            }
+        }
         
-        let result = TileCoord(
-            chunk: ChunkCoord(x: chunkX, y: chunkY),
-            localX: clampedLocalX,
-            localY: clampedLocalY
+        // If we found a good intersection point, use it
+        if let hitPoint = bestHitPoint, let tileCoord = bestTileCoord {
+            lastHitPoint = hitPoint
+            return tileCoord
+        }
+        
+        // Fallback to a simpler approach if binary search failed
+        // Use linear search with smaller steps
+        var currentDistance: Float = 0
+        let stepSize: Float = 0.2
+        let maxDistance2: Float = 100  // Limit search distance
+        
+        while currentDistance < maxDistance2 {
+            let testPoint = origin + direction * currentDistance
+            
+            // Calculate chunk and tile coordinates
+            let testChunkX = Int(floor(testPoint.x / chunkSize))
+            let testChunkY = Int(floor(testPoint.z / chunkSize))
+            
+            // Calculate local coordinates within chunk
+            let testLocalXFloat = testPoint.x - (Float(testChunkX) * chunkSize)
+            let testLocalYFloat = testPoint.z - (Float(testChunkY) * chunkSize)
+            
+            // Convert to integer tile coordinates
+            let testLocalX = Int(floor(testLocalXFloat))
+            let testLocalY = Int(floor(testLocalYFloat))
+            
+            // Ensure coordinates are within valid range
+            if testLocalX >= 0 && testLocalX < Chunk.size && testLocalY >= 0 && testLocalY < Chunk.size {
+                // Get the chunk and tile at test position
+                let testChunk = chunkProvider.chunk(at: ChunkCoord(x: testChunkX, y: testChunkY))
+                let tileHeight = testChunk.tiles[testLocalX][testLocalY].height
+                
+                // If we're at or below the terrain surface, we've found our intersection
+                if testPoint.y <= tileHeight {
+                    lastHitPoint = testPoint
+                    return TileCoord(
+                        chunk: ChunkCoord(x: testChunkX, y: testChunkY),
+                        localX: testLocalX,
+                        localY: testLocalY
+                    )
+                }
+            }
+            
+            currentDistance += stepSize
+        }
+        
+        // If all else fails, use the initial plane intersection
+        let fallbackPoint = origin + direction * t0
+        lastHitPoint = fallbackPoint
+        
+        let fbChunkX = Int(floor(fallbackPoint.x / chunkSize))
+        let fbChunkY = Int(floor(fallbackPoint.z / chunkSize))
+        let fbLocalX = Int(floor(fallbackPoint.x - Float(fbChunkX) * chunkSize))
+        let fbLocalY = Int(floor(fallbackPoint.z - Float(fbChunkY) * chunkSize))
+        
+        return TileCoord(
+            chunk: ChunkCoord(x: fbChunkX, y: fbChunkY),
+            localX: max(0, min(fbLocalX, Chunk.size - 1)),
+            localY: max(0, min(fbLocalY, Chunk.size - 1))
         )
-        
-        return result
     }
     
     // Test teleport positions for debugging
