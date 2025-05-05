@@ -138,6 +138,9 @@ final class GameViewController: NSViewController, GameViewInputDelegate {
         
         print("Clicked on tile: \(tile)")
         playerEntity.teleport(to: tile)
+        
+        // Focus camera on player's new position
+        renderer.focusCameraOnPosition(playerEntity.position)
     }
 
     private func updateDebugOverlayIfNeeded() {
