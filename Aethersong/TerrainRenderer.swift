@@ -30,8 +30,6 @@ public final class TerrainRenderer {
            highlightedTile?.chunk.y != tile.chunk.y ||
            highlightedTile?.localX != tile.localX || 
            highlightedTile?.localY != tile.localY {
-            
-            print("Highlighting tile: Chunk(\(tile.chunk.x), \(tile.chunk.y)) Local(\(tile.localX), \(tile.localY))")
         }
         
         highlightedTile = tile

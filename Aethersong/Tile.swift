@@ -1,18 +1,11 @@
 import Foundation
 
-/// Represents a specific tile within a chunk
-public struct TileCoord: CustomStringConvertible {
-    public let chunk: ChunkCoord
-    public let localX: Int
-    public let localY: Int
+public struct Tile {
+    public var height: Float
+    public var type: UInt8
 
-    public var description: String {
-        return "Chunk(\(chunk.x), \(chunk.y)) Tile(\(localX), \(localY))"
-    }
-
-    public init(chunk: ChunkCoord, localX: Int, localY: Int) {
-        self.chunk = chunk
-        self.localX = localX
-        self.localY = localY
+    public init(height: Float = 0, type: UInt8 = 0) {
+        self.height = height
+        self.type = type
     }
 }

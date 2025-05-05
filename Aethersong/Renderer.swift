@@ -1,21 +1,29 @@
 import MetalKit
+import simd
 
 protocol RendererDelegate: AnyObject {
-    func rendererDidRenderFrame()
+    func rendererDidUpdate()
 }
 
 @MainActor
 public class Renderer: NSObject, MTKViewDelegate {
     weak var delegate: RendererDelegate?
 
-    public static var sharedCameraViewMatrix: matrix_float4x4 =
-        matrix_identity_float4x4
-    public static var sharedProjectionMatrix: matrix_float4x4 =
-        matrix_identity_float4x4
+    public static var sharedCameraViewMatrix: matrix_float4x4 {
+        get { return GlobalUniforms.cameraViewMatrix }
+        set { GlobalUniforms.cameraViewMatrix = newValue }
+    }
+    
+    public static var sharedProjectionMatrix: matrix_float4x4 {
+        get { return GlobalUniforms.projectionMatrix }
+        set { GlobalUniforms.projectionMatrix = newValue }
+    }
 
     public let device: MTLDevice
     public let terrainRenderer: TerrainRenderer
     public let camera = Camera()
+    public let view: MTKView
+    private var axisIndicator: AxisIndicator!
 
     private let entityManager: EntityManager
     private var lastFrameTimestamp: CFTimeInterval = CACurrentMediaTime()
@@ -48,16 +56,17 @@ public class Renderer: NSObject, MTKViewDelegate {
         let device: MTLDevice
         if let dev = view.device {
             device = dev
-        } else if let sysDev = MTLCreateSystemDefaultDevice() {
-            device = sysDev
+        } else if let defaultDevice = MTLCreateSystemDefaultDevice() {
+            device = defaultDevice
             view.device = device
         } else {
-            fatalError("Metal device not available")
+            fatalError("Metal is not supported on this device")
         }
         self.device = device
+        self.view = view
         self.entityManager = entityManager
 
-        // Load default library
+        // Get Metal library
         guard let library = device.makeDefaultLibrary() else {
             fatalError("Default Metal library not found")
         }
@@ -65,8 +74,9 @@ public class Renderer: NSObject, MTKViewDelegate {
         print("Available Metal functions:")
         let functions = library.functionNames
         if !functions.isEmpty {
-            for function in functions {
-                print("  - \(function)")
+            for _ in functions {
+                // Use _ to avoid unused variable warning
+                // print("  - \(function)")
             }
         } else {
             print("  No functions found in Metal library")
@@ -94,37 +104,38 @@ public class Renderer: NSObject, MTKViewDelegate {
         }
         self.uniformBuffer = uBuf
 
-        // Vertex descriptor
-        let vDesc = MTLVertexDescriptor()
-        vDesc.attributes[0].format = .float3
-        vDesc.attributes[0].offset = 0
-        vDesc.attributes[0].bufferIndex = 0
-        vDesc.attributes[1].format = .float2
-        vDesc.attributes[1].offset = MemoryLayout<SIMD3<Float>>.stride
-        vDesc.attributes[1].bufferIndex = 0
-        vDesc.layouts[0].stride = MemoryLayout<Float>.stride * 5
+        // Setup vertex descriptor for terrain
+        let vertexDescriptor = MTLVertexDescriptor()
+        vertexDescriptor.attributes[0].format = .float3
+        vertexDescriptor.attributes[0].offset = 0
+        vertexDescriptor.attributes[0].bufferIndex = 0
+        vertexDescriptor.attributes[1].format = .float2
+        vertexDescriptor.attributes[1].offset = MemoryLayout<SIMD3<Float>>.stride
+        vertexDescriptor.attributes[1].bufferIndex = 0
+        vertexDescriptor.layouts[0].stride = MemoryLayout<Float>.stride * 5
 
+        // Setup terrain renderer
         do {
             terrainRenderer = try TerrainRenderer(
                 device: device,
                 library: library,
-                descriptor: vDesc,
+                descriptor: vertexDescriptor,
                 pixelFormat: view.colorPixelFormat,
                 chunkProvider: chunkProvider
             )
         } catch {
-            fatalError("TerrainRenderer init failed: \(error)")
+            fatalError("TerrainRenderer init failed: \\(error)")
         }
 
         EntityRenderer.buildPipelineState(device: view.device!)
+        
+        // Initialize axis indicator
+        self.axisIndicator = AxisIndicator(device: device)
 
         super.init()
+
         view.delegate = self
         setupKeyboardMonitoring()
-
-        view.isPaused = false
-        view.enableSetNeedsDisplay = false
-        view.preferredFramesPerSecond = 60
 
         // Camera setup
         let aspect = Float(view.bounds.width) / Float(view.bounds.height)
@@ -160,6 +171,8 @@ public class Renderer: NSObject, MTKViewDelegate {
 
         let viewMatrix = camera.viewMatrix
         let projectionMatrix = camera.projectionMatrix
+        
+        // Update global uniforms with current camera matrices
         GlobalUniforms.cameraViewMatrix = viewMatrix
         GlobalUniforms.projectionMatrix = projectionMatrix
 
@@ -174,34 +187,57 @@ public class Renderer: NSObject, MTKViewDelegate {
             let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: rpd)
         else { return }
 
-        let target = SIMD3<Float>(
-            Float(Chunk.size) / 2,
-            1,
-            Float(Chunk.size) / 2
-        )
-        let chunkX = Int(target.x) / Chunk.size
-        let chunkY = Int(target.z) / Chunk.size
-        let centerChunk = ChunkCoord(x: chunkX, y: chunkY)
+        // Get player position for chunk rendering
+        var playerPosition: SIMD3<Float>? = nil
+        for entity in entityManager.entities {
+            if let player = entity as? PlayerEntity {
+                playerPosition = player.position
+                break
+            }
+        }
+        
+        // Use player position to determine center chunk for rendering
+        let centerChunk: ChunkCoord
+        if let playerPos = playerPosition {
+            let chunkX = Int(floor(playerPos.x / Float(Chunk.size)))
+            let chunkY = Int(floor(playerPos.z / Float(Chunk.size)))
+            centerChunk = ChunkCoord(x: chunkX, y: chunkY)
+        } else {
+            // Fallback to default center if no player found
+            let defaultTarget = SIMD3<Float>(
+                Float(Chunk.size) / 2,
+                1,
+                Float(Chunk.size) / 2
+            )
+            let chunkX = Int(defaultTarget.x) / Chunk.size
+            let chunkY = Int(defaultTarget.z) / Chunk.size
+            centerChunk = ChunkCoord(x: chunkX, y: chunkY)
+        }
 
-        terrainRenderer.draw(encoder: encoder, centerChunk: centerChunk)
+        // Pass player position to terrain renderer
+        terrainRenderer.draw(encoder: encoder, centerChunk: centerChunk, playerPosition: playerPosition)
         entityManager.drawAll(encoder: encoder)
+        
+        // Draw axis indicator in the top-right corner
+        axisIndicator.draw(encoder: encoder, 
+                          viewMatrix: camera.viewMatrix, 
+                          projectionMatrix: camera.projectionMatrix)
 
         encoder.endEncoding()
+
         if let drawable = view.currentDrawable {
             cmdBuf.present(drawable)
         }
-        cmdBuf.commit()
-    }
 
-    // MARK: - Private helpers
-    private func radians_from_degrees(_ degrees: Float) -> Float {
-        return (degrees / 180) * .pi
+        cmdBuf.commit()
+
+        delegate?.rendererDidUpdate()
     }
 
     private func updateCameraView() {
-        let x = target.x + radius * cosf(pitch) * sinf(yaw)
-        let y = target.y + radius * sinf(pitch)
-        let z = target.z + radius * cosf(pitch) * cosf(yaw)
+        let x = target.x + radius * sinf(pitch) * sinf(yaw)
+        let y = target.y + radius * cosf(pitch)
+        let z = target.z + radius * sinf(pitch) * cosf(yaw)
         let eye = SIMD3<Float>(x, y, z)
         
         // Ensure y is positive to avoid looking from below
@@ -216,6 +252,10 @@ public class Renderer: NSObject, MTKViewDelegate {
         } else {
             camera.lookAt(eye: eye, target: target, up: SIMD3<Float>(0, 1, 0))
         }
+        
+        // Update global uniforms with current camera matrices
+        GlobalUniforms.cameraViewMatrix = camera.viewMatrix
+        GlobalUniforms.projectionMatrix = camera.projectionMatrix
     }
 
     private func setupKeyboardMonitoring() {
@@ -250,14 +290,38 @@ public class Renderer: NSObject, MTKViewDelegate {
             switch key {
             case "a": yaw -= 0.02
             case "d": yaw += 0.02
-            case "w": pitch = min(.pi / 2 - 0.1, pitch + 0.02)
-            case "s": pitch = max(-.pi / 2 + 0.1, pitch - 0.02)
+            case "s": pitch = min(.pi / 2 - 0.1, pitch + 0.02)  // Inverted: S moves camera up
+            case "w": pitch = max(-.pi / 2 + 0.1, pitch - 0.02) // Inverted: W moves camera down
             case "+", "=": radius = max(4, radius - 0.2)
             case "-": radius = min(80, radius + 0.2)
             default: continue
             }
+            updateCameraView()
         }
-        updateCameraView()
     }
-
+    
+    // Focus camera on a specific position
+    public func focusCameraOnPosition(_ position: SIMD3<Float>) {
+        // Update the camera target to look at this position
+        target = position
+        
+        // Maintain the same camera angle but focus on the new target
+        updateCameraView()
+        
+        print("Camera now focused on position: \(position)")
+        print("Camera position: \(camera.position)")
+        print("Camera target: \(target)")
+    }
+    
+    // Increase the camera's far plane to ensure all chunks are visible
+    public func extendCameraRange() {
+        let aspect = Float(view.bounds.width) / Float(view.bounds.height)
+        camera.updatePerspective(
+            fovy: radians_from_degrees(65),
+            aspect: aspect,
+            nearZ: 1.0,
+            farZ: 200.0  // Increased far plane distance
+        )
+        print("Extended camera range to farZ=200.0")
+    }
 }

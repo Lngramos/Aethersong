@@ -1,0 +1,60 @@
+    // Test teleport positions for debugging
+    private func setupTestTeleportCommands() {
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, let key = event.charactersIgnoringModifiers else {
+                return event
+            }
+            
+            // Use number keys 1-6 to teleport to test positions
+            switch key {
+            case "1":
+                self.testTeleport(chunk: 0, 0, tile: 8, 8)
+                return nil
+            case "2":
+                self.testTeleport(chunk: 1, 0, tile: 8, 8)
+                return nil
+            case "3":
+                self.testTeleport(chunk: 0, 1, tile: 8, 8)
+                return nil
+            case "4":
+                self.testTeleport(chunk: 1, 1, tile: 8, 8)
+                return nil
+            case "5":
+                self.testTeleport(chunk: -1, 0, tile: 8, 8)
+                return nil
+            case "6":
+                self.testTeleport(chunk: 0, -1, tile: 8, 8)
+                return nil
+            default:
+                break
+            }
+            
+            return event
+        }
+    }
+    
+    private func testTeleport(chunk chunkX: Int, _ chunkY: Int, tile tileX: Int, _ tileY: Int) {
+        print("\n--- TEST TELEPORT ---")
+        print("Teleporting to Chunk(\(chunkX), \(chunkY)) Tile(\(tileX), \(tileY))")
+        
+        let chunkCoord = ChunkCoord(x: chunkX, y: chunkY)
+        
+        // Ensure chunks are loaded in the area
+        chunkProvider.ensureChunksLoaded(around: chunkCoord, radius: 2)
+        
+        // Extend camera range to see distant chunks
+        renderer.extendCameraRange()
+        
+        let tile = TileCoord(
+            chunk: chunkCoord,
+            localX: tileX,
+            localY: tileY
+        )
+        
+        playerEntity.teleport(to: tile)
+        
+        // Force camera to look at the player's new position
+        renderer.focusCameraOnPosition(playerEntity.position)
+        
+        print("------------------\n")
+    }
