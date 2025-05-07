@@ -22,6 +22,12 @@ final class GameViewController: NSViewController, GameViewInputDelegate {
         self.view = GameView(
             frame: CGRect(x: 0, y: 0, width: 1440, height: 900)
         )
+        
+        // Configure the view for smooth rendering
+        if let mtkView = self.view as? MTKView {
+            mtkView.preferredFramesPerSecond = 60
+            mtkView.enableSetNeedsDisplay = false
+        }
     }
 
     override func viewDidLoad() {

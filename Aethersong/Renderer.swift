@@ -33,7 +33,7 @@ public class Renderer: NSObject, MTKViewDelegate {
     private var bufferIndex = 0
 
     private var yaw: Float = .pi / 4
-    private var pitch: Float = .pi / 6  // Changed from .pi/4 to .pi/6 for a better initial view
+    private var pitch: Float = -0.9  // About -50 degrees, more forward-looking
     private var radius: Float = 12
     private var target = SIMD3<Float>(
         Float(Chunk.size) / 2,
@@ -167,7 +167,7 @@ public class Renderer: NSObject, MTKViewDelegate {
 
         entityManager.updateAll(deltaTime: Float(deltaTime))
 
-        bufferIndex += 1
+        bufferIndex = (bufferIndex + 1) % maxBuffersInFlight
 
         let viewMatrix = camera.viewMatrix
         let projectionMatrix = camera.projectionMatrix
@@ -227,31 +227,31 @@ public class Renderer: NSObject, MTKViewDelegate {
 
         if let drawable = view.currentDrawable {
             cmdBuf.present(drawable)
+            cmdBuf.commit()
         }
-
-        cmdBuf.commit()
-
+        
         delegate?.rendererDidUpdate()
     }
 
     private func updateCameraView() {
+        // Calculate camera position based on spherical coordinates
+        
+        // Enforce pitch limits to prevent extreme angles
+        // Allow looking down at about 25 degrees (0.44 rad)
+        // Allow looking up at about 80 degrees (-1.4 rad)
+        pitch = min(-0.44, max(-1.4, pitch))  // Inverted: negative pitch is looking up
+        
+        // Print current pitch for debugging
+        // print("Current pitch: \(pitch) radians, \(pitch * 180 / .pi) degrees")
+        
         let x = target.x + radius * sinf(pitch) * sinf(yaw)
         let y = target.y + radius * cosf(pitch)
         let z = target.z + radius * sinf(pitch) * cosf(yaw)
         let eye = SIMD3<Float>(x, y, z)
         
-        // Ensure y is positive to avoid looking from below
-        if y < target.y {
-            let adjustedPitch = max(0.1, pitch)
-            let adjustedY = target.y + radius * sinf(adjustedPitch)
-            camera.lookAt(
-                eye: SIMD3<Float>(x, adjustedY, z),
-                target: target,
-                up: SIMD3<Float>(0, 1, 0)
-            )
-        } else {
-            camera.lookAt(eye: eye, target: target, up: SIMD3<Float>(0, 1, 0))
-        }
+        // Set the camera view - no need for special case handling
+        // since we're enforcing pitch limits that prevent problematic angles
+        camera.lookAt(eye: eye, target: target, up: SIMD3<Float>(0, 1, 0))
         
         // Update global uniforms with current camera matrices
         GlobalUniforms.cameraViewMatrix = camera.viewMatrix
@@ -290,8 +290,16 @@ public class Renderer: NSObject, MTKViewDelegate {
             switch key {
             case "a": yaw -= 0.02
             case "d": yaw += 0.02
-            case "s": pitch = min(.pi / 3, pitch + 0.02)  // Inverted: S moves camera up, limited to 60 degrees
-            case "w": pitch = max(0.1, pitch - 0.02) // Inverted: W moves camera down, limited to avoid flipping
+            case "w": 
+                // W key moves camera down (more top-down view)
+                // Allow looking down at about 25 degrees
+                let newPitch = pitch + 0.02
+                pitch = min(-0.44, max(-1.4, newPitch))  // Constrain within the same range
+            case "s": 
+                // S key moves camera up (more forward view)
+                // Allow looking up at about 80 degrees
+                let newPitch = pitch - 0.02
+                pitch = min(-0.44, max(-1.4, newPitch))  // Negative pitch is looking up
             case "+", "=": radius = max(4, radius - 0.2)
             case "-": radius = min(80, radius + 0.2)
             default: continue
