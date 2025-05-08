@@ -10,18 +10,18 @@ public class Renderer: NSObject, MTKViewDelegate {
     weak var delegate: RendererDelegate?
 
     public static var sharedCameraViewMatrix: matrix_float4x4 {
-        get { return GlobalUniforms.cameraViewMatrix }
-        set { GlobalUniforms.cameraViewMatrix = newValue }
+        get { return Aethersong.GlobalUniforms.cameraViewMatrix }
+        set { Aethersong.GlobalUniforms.cameraViewMatrix = newValue }
     }
     
     public static var sharedProjectionMatrix: matrix_float4x4 {
-        get { return GlobalUniforms.projectionMatrix }
-        set { GlobalUniforms.projectionMatrix = newValue }
+        get { return Aethersong.GlobalUniforms.projectionMatrix }
+        set { Aethersong.GlobalUniforms.projectionMatrix = newValue }
     }
 
     public let device: MTLDevice
     public let terrainRenderer: TerrainRenderer
-    public let camera = Camera()
+    public let camera = OrbitCamera()
     public let view: MTKView
     private var axisIndicator: AxisIndicator!
 
@@ -32,9 +32,7 @@ public class Renderer: NSObject, MTKViewDelegate {
     private let maxBuffersInFlight = 3
     private var bufferIndex = 0
 
-    private var yaw: Float = .pi / 4
-    private var pitch: Float = -0.9  // About -50 degrees, more forward-looking
-    private var radius: Float = 12
+    // Camera target position
     private var target = SIMD3<Float>(
         Float(Chunk.size) / 2,
         1,
@@ -145,7 +143,12 @@ public class Renderer: NSObject, MTKViewDelegate {
             nearZ: 1.0,
             farZ: 100.0
         )
-        updateCameraView()
+        
+        // Initialize camera position with default values
+        camera.target = target
+        camera.pitch = 60.0  // 60 degrees (looking down at player)
+        camera.yaw = 180.0   // Directly in front of player
+        camera.radius = 15.0 // Default distance
     }
 
     // MARK: - MTKViewDelegate
@@ -157,7 +160,6 @@ public class Renderer: NSObject, MTKViewDelegate {
             nearZ: 1.0,
             farZ: 100.0
         )
-        updateCameraView()
     }
 
     public func draw(in view: MTKView) {
@@ -166,6 +168,21 @@ public class Renderer: NSObject, MTKViewDelegate {
         lastFrameTimestamp = currentTime
 
         entityManager.updateAll(deltaTime: Float(deltaTime))
+        
+        // Find player position and update camera target
+        var playerPosition: SIMD3<Float>? = nil
+        for entity in entityManager.entities {
+            if let player = entity as? PlayerEntity {
+                playerPosition = player.position
+                // Always keep camera focused on player
+                // Add a small Y offset to focus slightly above the player
+                let targetPosition = SIMD3<Float>(player.position.x, player.position.y + 1.0, player.position.z)
+                focusCameraOnPosition(targetPosition)
+                break
+            }
+        }
+        
+        handleHeldKeys()
 
         bufferIndex = (bufferIndex + 1) % maxBuffersInFlight
 
@@ -173,8 +190,8 @@ public class Renderer: NSObject, MTKViewDelegate {
         let projectionMatrix = camera.projectionMatrix
         
         // Update global uniforms with current camera matrices
-        GlobalUniforms.cameraViewMatrix = viewMatrix
-        GlobalUniforms.projectionMatrix = projectionMatrix
+        Aethersong.GlobalUniforms.cameraViewMatrix = viewMatrix
+        Aethersong.GlobalUniforms.projectionMatrix = projectionMatrix
 
         terrainRenderer.updateCamera(
             viewMatrix: viewMatrix,
@@ -187,15 +204,6 @@ public class Renderer: NSObject, MTKViewDelegate {
             let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: rpd)
         else { return }
 
-        // Get player position for chunk rendering
-        var playerPosition: SIMD3<Float>? = nil
-        for entity in entityManager.entities {
-            if let player = entity as? PlayerEntity {
-                playerPosition = player.position
-                break
-            }
-        }
-        
         // Use player position to determine center chunk for rendering
         let centerChunk: ChunkCoord
         if let playerPos = playerPosition {
@@ -233,31 +241,6 @@ public class Renderer: NSObject, MTKViewDelegate {
         delegate?.rendererDidUpdate()
     }
 
-    private func updateCameraView() {
-        // Calculate camera position based on spherical coordinates
-        
-        // Enforce pitch limits to prevent extreme angles
-        // Allow looking down at about 25 degrees (0.44 rad)
-        // Allow looking up at about 80 degrees (-1.4 rad)
-        pitch = min(-0.44, max(-1.4, pitch))  // Inverted: negative pitch is looking up
-        
-        // Print current pitch for debugging
-        // print("Current pitch: \(pitch) radians, \(pitch * 180 / .pi) degrees")
-        
-        let x = target.x + radius * sinf(pitch) * sinf(yaw)
-        let y = target.y + radius * cosf(pitch)
-        let z = target.z + radius * sinf(pitch) * cosf(yaw)
-        let eye = SIMD3<Float>(x, y, z)
-        
-        // Set the camera view - no need for special case handling
-        // since we're enforcing pitch limits that prevent problematic angles
-        camera.lookAt(eye: eye, target: target, up: SIMD3<Float>(0, 1, 0))
-        
-        // Update global uniforms with current camera matrices
-        GlobalUniforms.cameraViewMatrix = camera.viewMatrix
-        GlobalUniforms.projectionMatrix = camera.projectionMatrix
-    }
-
     private func setupKeyboardMonitoring() {
         NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) {
             [weak self] event in
@@ -288,23 +271,18 @@ public class Renderer: NSObject, MTKViewDelegate {
     private func handleHeldKeys() {
         for key in heldKeys {
             switch key {
-            case "a": yaw -= 0.02
-            case "d": yaw += 0.02
+            case "a": camera.adjustYaw(-0.8)  // Rotate camera left (counter-clockwise around player)
+            case "d": camera.adjustYaw(0.8)   // Rotate camera right (clockwise around player)
             case "w": 
-                // W key moves camera down (more top-down view)
-                // Allow looking down at about 25 degrees
-                let newPitch = pitch + 0.02
-                pitch = min(-0.44, max(-1.4, newPitch))  // Constrain within the same range
+                // W key increases pitch (more top-down view)
+                camera.adjustPitch(0.8)
             case "s": 
-                // S key moves camera up (more forward view)
-                // Allow looking up at about 80 degrees
-                let newPitch = pitch - 0.02
-                pitch = min(-0.44, max(-1.4, newPitch))  // Negative pitch is looking up
-            case "+", "=": radius = max(4, radius - 0.2)
-            case "-": radius = min(80, radius + 0.2)
+                // S key decreases pitch (more horizontal view)
+                camera.adjustPitch(-0.8)
+            case "+", "=": camera.adjustZoom(-0.5)  // Zoom in
+            case "-": camera.adjustZoom(0.5)        // Zoom out
             default: continue
             }
-            updateCameraView()
         }
     }
     
@@ -312,13 +290,10 @@ public class Renderer: NSObject, MTKViewDelegate {
     public func focusCameraOnPosition(_ position: SIMD3<Float>) {
         // Update the camera target to look at this position
         target = position
+        camera.target = position
         
-        // Maintain the same camera angle but focus on the new target
-        updateCameraView()
-        
-        print("Camera now focused on position: \(position)")
-        print("Camera position: \(camera.position)")
-        print("Camera target: \(target)")
+        // Make sure the view matrix is updated to look at the new target
+        camera.updateViewMatrix()
     }
     
     // Increase the camera's far plane to ensure all chunks are visible
@@ -333,3 +308,4 @@ public class Renderer: NSObject, MTKViewDelegate {
         print("Extended camera range to farZ=200.0")
     }
 }
+
